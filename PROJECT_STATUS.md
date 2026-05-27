@@ -9,11 +9,12 @@ Status:
 - Git branch: main
 - Working tree: clean
 - Python package version: 0.1.0
-- Tests passing: 167 passed
+- Tests passing: 170 passed
 - Ruff lint passing
 - Safety-first tastytrade defined-risk options bot
 - Live trading disabled by default
 - Current state: dry-run / paper / read-only tastytrade integration is strong
+- Local read-only dashboard is available for monitoring risk, open positions, exit guidance, and journal history
 - Live order submission exists only behind strict gates
 - Dry-run scheduler, readiness preflight, persistent kill switch, reconciliation, reporting, and operator runbook are available
 - Scheduler skips automated cycles outside regular US market hours (9:30-16:00 ET weekdays)
@@ -24,6 +25,7 @@ Important commands:
 - Run lint: .venv/bin/python -m ruff check .
 - CLI help: .venv/bin/python -m tasty_options_bot.cli --help
 - CLI version: .venv/bin/python -m tasty_options_bot.cli version
+- Local dashboard: .venv/bin/python -m tasty_options_bot.cli dashboard
 
 Available CLI commands:
 - version
@@ -38,6 +40,7 @@ Available CLI commands:
 - option-chain
 - live-dry-run
 - scheduler
+- dashboard
 - dry-run-demo
 - record-manual-trade
 - reconcile-submitted-orders

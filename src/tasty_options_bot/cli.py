@@ -12,6 +12,7 @@ from rich.table import Table
 from tasty_options_bot import __version__
 from tasty_options_bot.broker.tastytrade_client import TastytradeClient, TastytradeClientConfig
 from tasty_options_bot.config import load_config, load_tastytrade_config_from_env
+from tasty_options_bot.dashboard import serve_dashboard
 from tasty_options_bot.journal import Journal, JournalEvent, realized_pnl_totals
 from tasty_options_bot.order_ticket import (
     ClosingCreditSpreadTicket,
@@ -1637,6 +1638,24 @@ def journal(limit: int = 20) -> None:
             event.reason,
         )
     console.print(table)
+
+
+@app.command("dashboard")
+def dashboard(
+    host: str = typer.Option("127.0.0.1", help="Local interface to bind."),
+    port: int = typer.Option(8765, help="Local port to bind."),
+    journal_path: Path = typer.Option(Path("data/journal.jsonl"), help="Audit journal JSONL path."),
+) -> None:
+    """Start the local read-only dashboard."""
+    url = f"http://{host}:{port}"
+    console.print("Starting read-only local dashboard")
+    console.print(f"URL: {url}")
+    console.print("No orders can be submitted from this dashboard.")
+    console.print("Press Ctrl-C to stop.")
+    try:
+        serve_dashboard(host=host, port=port, journal_path=journal_path)
+    except KeyboardInterrupt:
+        console.print("Dashboard stopped.")
 
 
 @app.command("report")
