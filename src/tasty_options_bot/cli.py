@@ -84,6 +84,27 @@ def risk_status(
     console.print(f"Kill switch active: {_effective_kill_switch_active(config, journal)}")
 
 
+@app.command("operator-runbook")
+def operator_runbook() -> None:
+    """Print the safe daily operating workflow for the bot."""
+    console.print("Safe daily operator runbook")
+    console.print("1. Pre-flight readiness")
+    console.print("   .venv/bin/python -m tasty_options_bot.cli readiness-check --broker-check")
+    console.print("2. Reconcile submitted orders")
+    console.print("   .venv/bin/python -m tasty_options_bot.cli reconcile-submitted-orders")
+    console.print("3. Manage open live positions")
+    console.print("   .venv/bin/python -m tasty_options_bot.cli manage-live-positions --symbol SPY")
+    console.print("4. Run dry-run scheduler")
+    console.print("   .venv/bin/python -m tasty_options_bot.cli scheduler --symbol SPY --cycles 1")
+    console.print("5. Manual live submit")
+    console.print("   Only after reviewing readiness, positions, reconciliation, and preview output.")
+    console.print(
+        "   .venv/bin/python -m tasty_options_bot.cli live-dry-run SPY --best-only --ticket-preview "
+        "--submit-open --i-understand-live-order --confirm-symbol SPY"
+    )
+    console.print("No commands in this runbook submit orders except the explicitly manual live-submit example.")
+
+
 @app.command("readiness-check")
 def readiness_check(
     broker_check: bool = typer.Option(False, help="Fetch broker positions read-only and include them in readiness."),

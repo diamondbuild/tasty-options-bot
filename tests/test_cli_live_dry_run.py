@@ -104,6 +104,21 @@ def test_scheduler_skips_cycle_when_kill_switch_active(monkeypatch, tmp_path):
     assert "Skipping scheduler cycle because kill switch is active." in result.output
 
 
+def test_operator_runbook_prints_safe_daily_workflow():
+    result = CliRunner().invoke(app, ["operator-runbook"])
+
+    assert result.exit_code == 0
+    assert "Safe daily operator runbook" in result.output
+    assert "1. Pre-flight readiness" in result.output
+    assert ".venv/bin/python -m tasty_options_bot.cli readiness-check --broker-check" in result.output
+    assert "2. Reconcile submitted orders" in result.output
+    assert "3. Manage open live positions" in result.output
+    assert "4. Run dry-run scheduler" in result.output
+    assert "5. Manual live submit" in result.output
+    assert "No commands in this runbook submit orders except the explicitly manual" in result.output
+    assert "live-submit example." in result.output
+
+
 def test_readiness_check_reports_blockers_without_broker_check(tmp_path):
     journal_path = tmp_path / "journal.jsonl"
     Journal(journal_path).append(
