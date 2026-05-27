@@ -84,6 +84,82 @@ def risk_status(
     console.print(f"Kill switch active: {_effective_kill_switch_active(config, journal)}")
 
 
+@app.command("readiness-check")
+def readiness_check(
+    broker_check: bool = typer.Option(False, help="Fetch broker positions read-only and include them in readiness."),
+    journal_path: Path = typer.Option(Path("data/journal.jsonl"), help="Audit journal JSONL path."),
+) -> None:
+    """Print a read-only pre-flight checklist for scheduler and live-submit safety."""
+    config = load_config()
+    journal = Journal(journal_path)
+    kill_switch_active = _effective_kill_switch_active(config, journal)
+    unresolved_open_orders = _has_unresolved_open_order(journal)
+    closed_ids = _closed_manual_position_ids(journal)
+    open_journal_positions = []
+    for event in journal.read_recent(limit=1000):
+        if event.event_type not in {"manual_live_trade_entered", "live_open_order_filled"}:
+            continue
+        position_id = _position_id_from_open_event(event)
+        if position_id in closed_ids or position_id in open_journal_positions:
+            continue
+        open_journal_positions.append(position_id)
+
+    last_reconciliation = "none"
+    for event in journal.read_recent(limit=1000):
+        if event.event_type in {
+            "live_open_order_reconciled",
+            "live_open_order_filled",
+            "live_close_order_reconciled",
+            "live_close_order_filled",
+            "exit_decision",
+        }:
+            last_reconciliation = f"{event.event_type}:{event.decision}"
+            break
+
+    broker_symbols: set[str] | None = None
+    if broker_check:
+        client = build_tastytrade_client()
+        authenticate_client(client)
+        broker_symbols = _position_symbols(client.get_positions())
+
+    broker_has_positions = bool(broker_symbols) if broker_symbols is not None else False
+    blockers = []
+    if not config.execution.live_trading:
+        blockers.append("live_trading_disabled")
+    if kill_switch_active:
+        blockers.append("kill_switch_active")
+    if unresolved_open_orders:
+        blockers.append("unresolved_submitted_opening_order")
+    if open_journal_positions:
+        blockers.append("journal_open_position")
+    if broker_has_positions:
+        blockers.append("broker_open_position")
+    if broker_symbols is None:
+        blockers.append("broker_positions_not_checked")
+
+    console.print("Readiness check")
+    console.print(f"Live trading: {config.execution.live_trading}")
+    console.print(f"Manual approval required: {config.execution.require_manual_approval}")
+    console.print(f"Market orders allowed: {config.execution.allow_market_orders}")
+    console.print(f"Kill switch active: {kill_switch_active}")
+    console.print(f"Unresolved submitted opening orders: {unresolved_open_orders}")
+    console.print(f"Journal open positions: {bool(open_journal_positions)}")
+    if open_journal_positions:
+        console.print(f"Journal position ids: {', '.join(open_journal_positions)}")
+    console.print(f"Last reconciliation status: {last_reconciliation}")
+    if broker_symbols is None:
+        console.print("Broker positions: not checked")
+    else:
+        console.print("Broker positions checked: True")
+        console.print(f"Broker open positions: {broker_has_positions}")
+        if broker_symbols:
+            console.print(f"Broker symbols: {', '.join(sorted(broker_symbols))}")
+    console.print(f"Live submit readiness: {'READY' if not blockers else 'BLOCKED'}")
+    if blockers:
+        console.print(f"Blockers: {', '.join(blockers)}")
+    console.print("No orders were placed; readiness-check is read-only.")
+
+
 def _latest_kill_switch_journal_state(journal: Journal) -> bool | None:
     for event in journal.read_recent(limit=1000):
         if event.event_type != "kill_switch_changed":

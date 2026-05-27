@@ -104,6 +104,56 @@ def test_scheduler_skips_cycle_when_kill_switch_active(monkeypatch, tmp_path):
     assert "Skipping scheduler cycle because kill switch is active." in result.output
 
 
+def test_readiness_check_reports_blockers_without_broker_check(tmp_path):
+    journal_path = tmp_path / "journal.jsonl"
+    Journal(journal_path).append(
+        JournalEvent(
+            event_type="kill_switch_changed",
+            decision="enabled",
+            payload={"kill_switch_active": True},
+        )
+    )
+    Journal(journal_path).append(
+        JournalEvent(
+            event_type="live_open_order_submitted",
+            symbol="SPY",
+            decision="submitted",
+            payload={"order_response": {"order": {"id": "open-order-123", "status": "Received"}}},
+        )
+    )
+
+    result = CliRunner().invoke(app, ["readiness-check", "--journal-path", str(journal_path)])
+
+    assert result.exit_code == 0
+    assert "Readiness check" in result.output
+    assert "Live trading: False" in result.output
+    assert "Kill switch active: True" in result.output
+    assert "Unresolved submitted opening orders: True" in result.output
+    assert "Broker positions: not checked" in result.output
+    assert "Live submit readiness: BLOCKED" in result.output
+    assert "No orders were placed; readiness-check is read-only." in result.output
+
+
+def test_readiness_check_reports_broker_positions_when_requested(monkeypatch, tmp_path):
+    class FakeClient:
+        def get_positions(self):
+            return [{"symbol": "SPY   260626P00732000", "quantity": "-1"}]
+
+    monkeypatch.setattr("tasty_options_bot.cli.build_tastytrade_client", lambda: FakeClient())
+    monkeypatch.setattr("tasty_options_bot.cli.authenticate_client", lambda client: None)
+
+    result = CliRunner().invoke(
+        app,
+        ["readiness-check", "--broker-check", "--journal-path", str(tmp_path / "journal.jsonl")],
+    )
+
+    assert result.exit_code == 0
+    assert "Broker positions checked: True" in result.output
+    assert "Broker open positions: True" in result.output
+    assert "SPY   260626P00732000" in result.output
+    assert "Live submit readiness: BLOCKED" in result.output
+
+
 def make_decision(action, *, short=725, long=720, credit=0.91, delta=-0.24, reason="passed_strategy_and_risk"):
     return ScannerDecision(
         action=action,
