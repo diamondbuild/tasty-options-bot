@@ -1,0 +1,5 @@
+live_trading: false
+require_manual_approval: true
+order_type: limit
+allow_market_orders: false
+max_contracts_per_trade: 1

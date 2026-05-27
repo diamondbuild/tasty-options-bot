@@ -1,0 +1,9 @@
+README.md
+pyproject.toml
+src/tasty_options_bot/__init__.py
+src/tasty_options_bot.egg-info/PKG-INFO
+src/tasty_options_bot.egg-info/SOURCES.txt
+src/tasty_options_bot.egg-info/dependency_links.txt
+src/tasty_options_bot.egg-info/entry_points.txt
+src/tasty_options_bot.egg-info/requires.txt
+src/tasty_options_bot.egg-info/top_level.txt

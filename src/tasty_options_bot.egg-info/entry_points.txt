@@ -1,0 +1,2 @@
+[console_scripts]
+tasty-options-bot = tasty_options_bot.cli:app

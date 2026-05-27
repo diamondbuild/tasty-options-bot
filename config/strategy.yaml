@@ -1,0 +1,23 @@
+enabled:
+  - put_credit_spread
+universe:
+  - SPY
+  - QQQ
+  - IWM
+  - DIA
+  - XLK
+  - XLF
+  - XLE
+  - TLT
+  - GLD
+dte_min: 30
+dte_max: 45
+short_delta_min: 0.15
+short_delta_max: 0.25
+spread_widths:
+  - 1
+  - 2
+min_credit_ratio: 0.25
+profit_take_ratio: 0.50
+loss_multiple: 2.0
+close_dte: 21
