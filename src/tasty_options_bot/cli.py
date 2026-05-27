@@ -3,6 +3,7 @@
 import time
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 import typer
 from rich.console import Console
@@ -781,6 +782,20 @@ def live_dry_run(
         console.print("Dry run only: no orders were placed.")
 
 
+def _is_us_market_hours(now: datetime | None = None) -> bool:
+    """Return True during the regular NYSE/Nasdaq weekday session, 9:30-16:00 ET."""
+    current = now or datetime.now(timezone.utc)
+    if current.tzinfo is None:
+        current = current.replace(tzinfo=timezone.utc)
+    new_york_now = current.astimezone(ZoneInfo("America/New_York"))
+    if new_york_now.weekday() >= 5:
+        return False
+    minutes_since_midnight = new_york_now.hour * 60 + new_york_now.minute
+    market_open = 9 * 60 + 30
+    market_close = 16 * 60
+    return market_open <= minutes_since_midnight < market_close
+
+
 @app.command("scheduler")
 def scheduler(
     symbol: str = typer.Option("SPY", help="Underlying symbol to scan on each scheduler cycle."),
@@ -815,35 +830,40 @@ def scheduler(
     while cycles == 0 or cycle_number < cycles:
         cycle_number += 1
         console.print(f"Scheduler cycle {cycle_number}/{cycle_label_total}")
-        kill_switch_active = _effective_kill_switch_active(config, journal)
-        console.print(f"Kill switch active: {kill_switch_active}")
-        if kill_switch_active:
-            console.print("Skipping scheduler cycle because kill switch is active.")
+        market_hours_active = _is_us_market_hours()
+        console.print(f"Market hours active: {market_hours_active}")
+        if not market_hours_active:
+            console.print("Skipping scheduler cycle because market is closed.")
         else:
-            live_dry_run(
-                symbol=symbol.upper(),
-                dte_min=30,
-                dte_max=45,
-                max_contracts=100,
-                max_quote_age_seconds=120,
-                max_bid_ask_width=0.20,
-                spread_width=None,
-                min_credit_ratio=None,
-                short_delta_min=None,
-                short_delta_max=None,
-                max_position_loss=None,
-                max_open_risk=None,
-                max_open_positions=None,
-                preset=None,
-                best_only=True,
-                ticket_preview=True,
-                submit_open=False,
-                i_understand_live_order=False,
-                confirm_symbol=None,
-                max_entry_leg_bid_ask_width=None,
-                journal_path=journal_path,
-                max_results=10,
-            )
+            kill_switch_active = _effective_kill_switch_active(config, journal)
+            console.print(f"Kill switch active: {kill_switch_active}")
+            if kill_switch_active:
+                console.print("Skipping scheduler cycle because kill switch is active.")
+            else:
+                live_dry_run(
+                    symbol=symbol.upper(),
+                    dte_min=30,
+                    dte_max=45,
+                    max_contracts=100,
+                    max_quote_age_seconds=120,
+                    max_bid_ask_width=0.20,
+                    spread_width=None,
+                    min_credit_ratio=None,
+                    short_delta_min=None,
+                    short_delta_max=None,
+                    max_position_loss=None,
+                    max_open_risk=None,
+                    max_open_positions=None,
+                    preset=None,
+                    best_only=True,
+                    ticket_preview=True,
+                    submit_open=False,
+                    i_understand_live_order=False,
+                    confirm_symbol=None,
+                    max_entry_leg_bid_ask_width=None,
+                    journal_path=journal_path,
+                    max_results=10,
+                )
         if cycles == 0 or cycle_number < cycles:
             time.sleep(interval_seconds)
 

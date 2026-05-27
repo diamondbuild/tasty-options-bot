@@ -21,7 +21,7 @@ Safe operator commands:
 - `.venv/bin/python -m tasty_options_bot.cli readiness-check`
 - `.venv/bin/python -m tasty_options_bot.cli operator-runbook`
 - `.venv/bin/python -m tasty_options_bot.cli live-dry-run SPY --best-only --ticket-preview`
-- `.venv/bin/python -m tasty_options_bot.cli scheduler --symbol SPY --cycles 1`
+- `.venv/bin/python -m tasty_options_bot.cli scheduler --symbol SPY --cycles 1` (dry-run only; skips outside regular US market hours)
 
 Important:
 This is trading automation for real-money options. Do not enable live trading until tests, dry-run mode, paper broker, read-only account checks, risk gates, reconciliation, position exits, persistent kill switch, and explicit preview-only order tickets are verified.

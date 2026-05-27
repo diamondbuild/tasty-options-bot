@@ -8,6 +8,7 @@ from tasty_options_bot.cli import (
     _build_risk_manager,
     _build_scanner_config,
     _effective_kill_switch_active,
+    _is_us_market_hours,
     _build_strategy,
     _format_decision_row,
     _rank_decisions,
@@ -45,6 +46,7 @@ def test_scheduler_runs_one_dry_run_cycle_without_live_submission(monkeypatch, t
     def fake_live_dry_run(**kwargs):
         calls.append(kwargs)
 
+    monkeypatch.setattr("tasty_options_bot.cli._is_us_market_hours", lambda: True)
     monkeypatch.setattr("tasty_options_bot.cli.live_dry_run", fake_live_dry_run)
 
     result = CliRunner().invoke(
@@ -92,6 +94,7 @@ def test_scheduler_skips_cycle_when_kill_switch_active(monkeypatch, tmp_path):
     def fail_live_dry_run(**kwargs):
         raise AssertionError("scheduler should not scan when kill switch is active")
 
+    monkeypatch.setattr("tasty_options_bot.cli._is_us_market_hours", lambda: True)
     monkeypatch.setattr("tasty_options_bot.cli.live_dry_run", fail_live_dry_run)
 
     result = CliRunner().invoke(
@@ -102,6 +105,32 @@ def test_scheduler_skips_cycle_when_kill_switch_active(monkeypatch, tmp_path):
     assert result.exit_code == 0
     assert "Kill switch active: True" in result.output
     assert "Skipping scheduler cycle because kill switch is active." in result.output
+
+
+def test_scheduler_skips_cycle_when_outside_market_hours(monkeypatch, tmp_path):
+    calls = []
+
+    def fake_live_dry_run(**kwargs):
+        calls.append(kwargs)
+
+    monkeypatch.setattr("tasty_options_bot.cli._is_us_market_hours", lambda: False)
+    monkeypatch.setattr("tasty_options_bot.cli.live_dry_run", fake_live_dry_run)
+
+    result = CliRunner().invoke(
+        app,
+        ["scheduler", "--symbol", "SPY", "--cycles", "1", "--journal-path", str(tmp_path / "journal.jsonl")],
+    )
+
+    assert result.exit_code == 0
+    assert "Market hours active: False" in result.output
+    assert "Skipping scheduler cycle because market is closed." in result.output
+    assert calls == []
+
+
+def test_is_us_market_hours_uses_new_york_regular_session():
+    assert _is_us_market_hours(datetime(2026, 5, 26, 14, 0, tzinfo=timezone.utc)) is True
+    assert _is_us_market_hours(datetime(2026, 5, 26, 20, 1, tzinfo=timezone.utc)) is False
+    assert _is_us_market_hours(datetime(2026, 5, 23, 14, 0, tzinfo=timezone.utc)) is False
 
 
 def test_operator_runbook_prints_safe_daily_workflow():
