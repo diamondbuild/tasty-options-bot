@@ -3,6 +3,7 @@
 import time
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
+from typing import Any
 from zoneinfo import ZoneInfo
 
 import typer
@@ -523,6 +524,101 @@ def _print_closing_order_ticket_preview(ticket: ClosingCreditSpreadTicket) -> No
     for index, leg in enumerate(ticket.legs, start=1):
         table.add_row(f"Leg {index}", f"{leg.action} {leg.quantity} {leg.option_symbol}")
     console.print(table)
+
+
+def _balance_value(balance: dict[str, Any], *keys: str) -> float | None:
+    for key in keys:
+        value = balance.get(key)
+        if value is None:
+            continue
+        try:
+            return round(float(value), 2)
+        except (TypeError, ValueError):
+            continue
+    return None
+
+
+def _balance_snapshot_payload(balance: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "net_liquidating_value": _balance_value(
+            balance,
+            "net_liquidating_value",
+            "net-liquidating-value",
+            "net_liq",
+            "net-liq",
+        ),
+        "cash_balance": _balance_value(balance, "cash_balance", "cash-balance"),
+        "option_buying_power": _balance_value(
+            balance,
+            "option_buying_power",
+            "option-buying-power",
+            "derivative_buying_power",
+            "derivative-buying-power",
+        ),
+        "raw_keys": sorted(str(key) for key in balance.keys()),
+    }
+
+
+@app.command("account-snapshot")
+def account_snapshot(
+    journal_path: Path = typer.Option(Path("data/journal.jsonl"), help="Audit journal JSONL path."),
+) -> None:
+    """Fetch tastytrade account balances read-only and write a dashboard journal snapshot."""
+    client = build_tastytrade_client()
+    authenticate_client(client)
+    balance = client.get_balance()
+    payload = _balance_snapshot_payload(balance)
+    Journal(journal_path).append(
+        JournalEvent(
+            event_type="account_balance_snapshot",
+            decision="recorded",
+            reason="read_only_dashboard_refresh",
+            payload=payload,
+        )
+    )
+    console.print("Account balance snapshot recorded")
+    if payload["net_liquidating_value"] is not None:
+        console.print(f"Net liquidating value: ${payload['net_liquidating_value']:,.2f}")
+    if payload["cash_balance"] is not None:
+        console.print(f"Cash balance: ${payload['cash_balance']:,.2f}")
+    if payload["option_buying_power"] is not None:
+        console.print(f"Option buying power: ${payload['option_buying_power']:,.2f}")
+    console.print("No orders were placed; account-snapshot is read-only.")
+
+
+@app.command("dashboard-refresh")
+def dashboard_refresh(
+    symbol: str = typer.Option("SPY", help="Underlying symbol to scan for dashboard candidates."),
+    journal_path: Path = typer.Option(Path("data/journal.jsonl"), help="Audit journal JSONL path."),
+) -> None:
+    """Refresh dashboard journal data using read-only account and scanner calls."""
+    account_snapshot(journal_path=journal_path)
+    live_dry_run(
+        symbol=symbol.upper(),
+        dte_min=30,
+        dte_max=45,
+        max_contracts=100,
+        max_quote_age_seconds=120,
+        max_bid_ask_width=0.20,
+        spread_width=None,
+        min_credit_ratio=None,
+        short_delta_min=None,
+        short_delta_max=None,
+        max_position_loss=None,
+        max_open_risk=None,
+        max_open_positions=None,
+        preset=None,
+        best_only=True,
+        ticket_preview=True,
+        submit_open=False,
+        i_understand_live_order=False,
+        confirm_symbol=None,
+        max_entry_leg_bid_ask_width=None,
+        journal_path=journal_path,
+        max_results=10,
+    )
+    console.print("Dashboard data refresh complete")
+    console.print("No orders were placed; dashboard-refresh is read-only.")
 
 
 @app.command("option-chain")

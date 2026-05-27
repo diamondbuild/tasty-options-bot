@@ -146,6 +146,36 @@ def test_render_dashboard_html_contains_refresh_candidate_account_quote_and_tick
 
 
 
+
+
+def test_dashboard_snapshot_keeps_latest_account_snapshot_when_scanner_events_are_newer(tmp_path):
+    journal = Journal(tmp_path / "journal.jsonl")
+    journal.append(
+        JournalEvent(
+            event_type="account_balance_snapshot",
+            decision="recorded",
+            payload={"net_liquidating_value": 1526.73},
+            created_at=datetime(2026, 5, 27, 13, 0, tzinfo=timezone.utc),
+        )
+    )
+    for index in range(30):
+        journal.append(
+            JournalEvent(
+                event_type="scanner_decision",
+                symbol="SPY",
+                decision="rejected",
+                reason="test_event",
+                payload={"quote_time": f"2026-05-27T14:{index:02d}:00+00:00"},
+                created_at=datetime(2026, 5, 27, 14, index, tzinfo=timezone.utc),
+            )
+        )
+
+    snapshot = build_dashboard_snapshot(config=BotConfig(), journal=journal, today=date(2026, 5, 27))
+    html = render_dashboard_html(snapshot)
+
+    assert "$1,526.73" in html
+    assert "No broker balance snapshot journaled yet" not in html
+
 def test_dashboard_cli_exposes_safe_local_server_command():
     result = CliRunner().invoke(app, ["dashboard", "--help"])
 

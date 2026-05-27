@@ -40,6 +40,59 @@ def test_live_dry_run_accepts_symbol_as_positional_argument(monkeypatch):
     assert "No option contracts returned for filters." in result.output
 
 
+
+
+def test_account_snapshot_writes_read_only_balance_event(monkeypatch, tmp_path):
+    class FakeClient:
+        def get_balance(self):
+            return {
+                "net-liquidating-value": "3042.50",
+                "cash-balance": "1200.25",
+                "option-buying-power": "2100.00",
+            }
+
+    monkeypatch.setattr("tasty_options_bot.cli.build_tastytrade_client", lambda: FakeClient())
+    monkeypatch.setattr("tasty_options_bot.cli.authenticate_client", lambda client: None)
+    journal_path = tmp_path / "journal.jsonl"
+
+    result = CliRunner().invoke(app, ["account-snapshot", "--journal-path", str(journal_path)])
+
+    assert result.exit_code == 0
+    assert "Account balance snapshot recorded" in result.output
+    assert "No orders were placed; account-snapshot is read-only." in result.output
+    event = Journal(journal_path).read_recent(limit=1)[0]
+    assert event.event_type == "account_balance_snapshot"
+    assert event.decision == "recorded"
+    assert event.payload["net_liquidating_value"] == 3042.50
+    assert event.payload["cash_balance"] == 1200.25
+    assert event.payload["option_buying_power"] == 2100.00
+
+
+def test_dashboard_refresh_runs_account_snapshot_and_scanner_without_submit(monkeypatch, tmp_path):
+    calls = []
+
+    def fake_account_snapshot(*, journal_path):
+        calls.append(("account_snapshot", journal_path))
+
+    def fake_live_dry_run(**kwargs):
+        calls.append(("live_dry_run", kwargs))
+
+    monkeypatch.setattr("tasty_options_bot.cli.account_snapshot", fake_account_snapshot)
+    monkeypatch.setattr("tasty_options_bot.cli.live_dry_run", fake_live_dry_run)
+    journal_path = tmp_path / "journal.jsonl"
+
+    result = CliRunner().invoke(app, ["dashboard-refresh", "--symbol", "SPY", "--journal-path", str(journal_path)])
+
+    assert result.exit_code == 0
+    assert "Dashboard data refresh complete" in result.output
+    assert calls[0] == ("account_snapshot", journal_path)
+    assert calls[1][0] == "live_dry_run"
+    assert calls[1][1]["symbol"] == "SPY"
+    assert calls[1][1]["best_only"] is True
+    assert calls[1][1]["ticket_preview"] is True
+    assert calls[1][1]["submit_open"] is False
+    assert calls[1][1]["journal_path"] == journal_path
+
 def test_scheduler_runs_one_dry_run_cycle_without_live_submission(monkeypatch, tmp_path):
     calls = []
 

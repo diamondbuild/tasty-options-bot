@@ -12,6 +12,7 @@ from tasty_options_bot.reports import build_operator_report, OperatorReport
 
 OPEN_POSITION_EVENTS = {"manual_live_trade_entered", "live_open_order_filled"}
 CLOSE_POSITION_EVENTS = {"manual_live_trade_closed", "live_close_order_filled"}
+ACCOUNT_BALANCE_EVENTS = {"account_balance_snapshot", "balance_snapshot", "account_balance"}
 
 
 @dataclass(frozen=True)
@@ -73,7 +74,7 @@ def build_dashboard_snapshot(*, config: BotConfig, journal: Journal, today: date
         ),
         open_positions=_open_positions_from_events(events),
         latest_exit_decision=_latest_exit_decision(events),
-        recent_events=list(reversed(events[-25:])),
+        recent_events=_dashboard_recent_events(events),
     )
 
 
@@ -251,6 +252,18 @@ def _latest_exit_decision(events: list[JournalEvent]) -> DashboardExitDecision |
     return None
 
 
+
+def _dashboard_recent_events(events: list[JournalEvent]) -> list[JournalEvent]:
+    selected = list(events[-25:])
+    latest_account_snapshot = next(
+        (event for event in reversed(events) if event.event_type in ACCOUNT_BALANCE_EVENTS),
+        None,
+    )
+    if latest_account_snapshot is not None and latest_account_snapshot not in selected:
+        selected.insert(0, latest_account_snapshot)
+    return list(reversed(selected))
+
+
 def _latest_kill_switch_state(events: list[JournalEvent], *, default: bool) -> bool:
     for event in reversed(events):
         if event.event_type != "kill_switch_changed":
@@ -318,7 +331,7 @@ def _latest_scanner_event(snapshot: DashboardSnapshot) -> JournalEvent | None:
 
 def _account_balance(snapshot: DashboardSnapshot) -> str:
     for event in reversed(snapshot.recent_events):
-        if event.event_type not in {"account_balance_snapshot", "balance_snapshot", "account_balance"}:
+        if event.event_type not in ACCOUNT_BALANCE_EVENTS:
             continue
         payload = event.payload
         rows = [
