@@ -9,12 +9,13 @@ Status:
 - Git branch: main
 - Working tree: clean
 - Python package version: 0.1.0
-- Tests passing: 156 passed
+- Tests passing: 162 passed
 - Ruff lint passing
 - Safety-first tastytrade defined-risk options bot
 - Live trading disabled by default
 - Current state: dry-run / paper / read-only tastytrade integration is strong
 - Live order submission exists only behind strict gates
+- Dry-run scheduler, readiness preflight, persistent kill switch, reconciliation, and operator runbook are available
 
 Important commands:
 - Check repo: git status
@@ -27,12 +28,15 @@ Available CLI commands:
 - version
 - risk-status
 - kill-switch
+- readiness-check
+- operator-runbook
 - login-check
 - account
 - positions
 - balance
 - option-chain
 - live-dry-run
+- scheduler
 - dry-run-demo
 - record-manual-trade
 - reconcile-submitted-orders
