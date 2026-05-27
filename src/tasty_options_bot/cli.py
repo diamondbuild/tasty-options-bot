@@ -23,6 +23,7 @@ from tasty_options_bot.order_ticket import (
 )
 from tasty_options_bot.option_chain import OptionQuote
 from tasty_options_bot.position_manager import ManagedPosition, PositionManager, PositionManagerConfig
+from tasty_options_bot.reports import build_operator_report, write_markdown_report
 from tasty_options_bot.risk import AccountRiskLimits, RiskManager
 from tasty_options_bot.scanner import DryRunScanner, ScannerConfig
 from tasty_options_bot.scanner_diagnostics import diagnose_candidate_construction
@@ -1636,6 +1637,30 @@ def journal(limit: int = 20) -> None:
             event.reason,
         )
     console.print(table)
+
+
+@app.command("report")
+def report(
+    today: str | None = typer.Option(None, help="Report date YYYY-MM-DD. Defaults to today UTC."),
+    account_equity: float | None = typer.Option(None, help="Optional account equity to include in the report."),
+    unrealized_pnl: float | None = typer.Option(None, help="Optional unrealized P/L to include in the report."),
+    write_markdown: bool = typer.Option(False, help="Write markdown audit report under --reports-dir."),
+    reports_dir: Path = typer.Option(Path("reports"), help="Directory for markdown reports."),
+    journal_path: Path = typer.Option(Path("data/journal.jsonl"), help="Audit journal JSONL path."),
+) -> None:
+    """Print a daily operator report from the audit journal without placing orders."""
+    report_date = date.fromisoformat(today) if today is not None else datetime.now(timezone.utc).date()
+    operator_report = build_operator_report(
+        Journal(journal_path),
+        today=report_date,
+        account_equity=account_equity,
+        unrealized_pnl=unrealized_pnl,
+    )
+    console.print(operator_report.to_text())
+    if write_markdown:
+        path = write_markdown_report(operator_report, reports_dir)
+        console.print(f"Markdown report written: {path}")
+    console.print("No orders were placed; report is read-only.")
 
 
 if __name__ == "__main__":
