@@ -127,6 +127,7 @@ def render_dashboard_html(snapshot: DashboardSnapshot) -> str:
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Tasty Options Bot Dashboard</title>
+  <meta http-equiv="refresh" content="60">
   <style>{_css()}</style>
 </head>
 <body>
@@ -136,7 +137,10 @@ def render_dashboard_html(snapshot: DashboardSnapshot) -> str:
       <h1>Tasty Options Bot Dashboard</h1>
       <p class="muted">No orders can be submitted from this dashboard. Use it to monitor risk, journal history, and the current open trade while the CLI remains the execution gate.</p>
     </div>
-    <div class="status {readiness_class}">{escape(report.readiness)}</div>
+    <div class="header-actions">
+      <button type="button" onclick="window.location.reload()">Refresh now</button>
+      <div class="status {readiness_class}">{escape(report.readiness)}</div>
+    </div>
   </header>
 
   <main>
@@ -156,6 +160,28 @@ def render_dashboard_html(snapshot: DashboardSnapshot) -> str:
         {_safety_pill("Kill Switch Active", snapshot.safety.kill_switch_active, danger=True)}
       </div>
       <p class="muted">Dashboard controls are intentionally display-only in this phase. Manual/auto mode toggles will be added only after backend permission gates and tests exist.</p>
+    </section>
+
+    <section class="grid two">
+      <article class="panel">
+        <h2>Current Account / Balance</h2>
+        {_account_balance(snapshot)}
+      </article>
+      <article class="panel">
+        <h2>Live Quote Timestamps</h2>
+        {_quote_timestamps(snapshot)}
+      </article>
+    </section>
+
+    <section class="grid two">
+      <article class="panel">
+        <h2>Scanner Candidates</h2>
+        {_scanner_candidates(snapshot)}
+      </article>
+      <article class="panel">
+        <h2>Preview-Only Order Ticket</h2>
+        {_preview_order_ticket(snapshot)}
+      </article>
     </section>
 
     <section class="grid two">
@@ -281,6 +307,106 @@ def _exit_decision(decision: DashboardExitDecision | None) -> str:
     </dl>"""
 
 
+def _scanner_events(snapshot: DashboardSnapshot) -> list[JournalEvent]:
+    return [event for event in snapshot.recent_events if event.event_type in {"scanner_decision", "dry_run_scanner_decision"}]
+
+
+def _latest_scanner_event(snapshot: DashboardSnapshot) -> JournalEvent | None:
+    events = _scanner_events(snapshot)
+    return events[-1] if events else None
+
+
+def _account_balance(snapshot: DashboardSnapshot) -> str:
+    for event in reversed(snapshot.recent_events):
+        if event.event_type not in {"account_balance_snapshot", "balance_snapshot", "account_balance"}:
+            continue
+        payload = event.payload
+        rows = [
+            ("Net liq", _money_optional(_optional_float(payload.get("net_liquidating_value", payload.get("net-liquidating-value"))))),
+            ("Cash", _money_optional(_optional_float(payload.get("cash_balance", payload.get("cash-balance"))))),
+            ("Option buying power", _money_optional(_optional_float(payload.get("option_buying_power", payload.get("option-buying-power"))))),
+            ("Recorded", event.created_at.isoformat()),
+        ]
+        return _details(rows)
+    rows = [
+        ("Configured starting equity", _money(snapshot.report.account_equity or 3000.0)),
+        ("Source", "No broker balance snapshot journaled yet"),
+    ]
+    return _details(rows)
+
+
+def _quote_timestamps(snapshot: DashboardSnapshot) -> str:
+    rows = []
+    seen = set()
+    for event in reversed(_scanner_events(snapshot)):
+        payload = event.payload
+        quote_time = payload.get("quote_time") or payload.get("newest_quote_time") or payload.get("market_data_time")
+        if not quote_time:
+            quote_time = event.created_at.isoformat()
+        key = (event.symbol, str(quote_time))
+        if key in seen:
+            continue
+        seen.add(key)
+        rows.append((event.symbol or "scanner", str(quote_time)))
+        if len(rows) >= 5:
+            break
+    if not rows:
+        return '<p class="muted">No live quote timestamps recorded yet. Run a dry-run scanner with market data, then refresh.</p>'
+    return _details(rows)
+
+
+def _scanner_candidates(snapshot: DashboardSnapshot) -> str:
+    events = list(reversed(_scanner_events(snapshot)))[:8]
+    if not events:
+        return '<p class="muted">No scanner candidates recorded yet. Run live-dry-run with --ticket-preview, then refresh.</p>'
+    rows = "".join(
+        "<tr>"
+        f"<td>{escape(event.created_at.isoformat())}</td>"
+        f"<td>{escape(event.symbol)}</td>"
+        f"<td>{escape(event.decision)}</td>"
+        f"<td>{escape(str(event.payload.get('expiration', '')))}</td>"
+        f"<td>{escape(str(event.payload.get('short_strike', '')))}</td>"
+        f"<td>{escape(str(event.payload.get('long_strike', '')))}</td>"
+        f"<td>{_money_optional(_optional_float(event.payload.get('credit')))}</td>"
+        f"<td>{_money_optional(_optional_float(event.payload.get('max_loss')))}</td>"
+        f"<td>{escape(event.reason)}</td>"
+        "</tr>"
+        for event in events
+    )
+    return f"""<div class="table-wrap"><table>
+      <thead><tr><th>Time</th><th>Symbol</th><th>Decision</th><th>Exp</th><th>Short</th><th>Long</th><th>Credit</th><th>Max Loss</th><th>Reason</th></tr></thead>
+      <tbody>{rows}</tbody>
+    </table></div>"""
+
+
+def _preview_order_ticket(snapshot: DashboardSnapshot) -> str:
+    event = next((candidate for candidate in reversed(_scanner_events(snapshot)) if candidate.decision == "would_trade"), None)
+    if event is None:
+        return '<p class="muted">No would_trade candidate available for a preview-only ticket.</p>'
+    payload = event.payload
+    strategy = str(payload.get("strategy_type") or payload.get("strategy") or "Put Credit Spread")
+    credit = _optional_float(payload.get("credit"))
+    max_loss = _optional_float(payload.get("max_loss"))
+    rows = [
+        ("Safety status", "preview_only_not_submitted"),
+        ("Submission allowed", "False"),
+        ("Strategy", strategy),
+        ("Symbol", event.symbol),
+        ("Order type", "limit"),
+        ("Net price effect", "credit"),
+        ("Net credit", _money_optional(credit)),
+        ("Max loss", _money_optional(max_loss)),
+        ("Leg 1", f"sell_to_open 1 {payload.get('short_option_symbol', '')}"),
+        ("Leg 2", f"buy_to_open 1 {payload.get('long_option_symbol', '')}"),
+    ]
+    return _details(rows)
+
+
+def _details(rows: list[tuple[str, str]]) -> str:
+    items = "".join(f"<dt>{escape(label)}</dt><dd>{escape(value)}</dd>" for label, value in rows)
+    return f'<dl class="details">{items}</dl>'
+
+
 def _journal_table(events: list[JournalEvent]) -> str:
     if not events:
         return '<p class="muted">No journal events found.</p>'
@@ -345,6 +471,8 @@ def _css() -> str:
     body { margin: 0; background: radial-gradient(circle at top left, #1d2b53, #0b1020 42%); min-height: 100vh; }
     header, main { max-width: 1180px; margin: 0 auto; padding: 28px; }
     header { display: flex; align-items: center; justify-content: space-between; gap: 24px; }
+    .header-actions { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+    button { border: 1px solid #38bdf8; background: #075985; color: #e0f2fe; border-radius: 999px; padding: 10px 14px; font-weight: 800; cursor: pointer; }
     h1 { font-size: clamp(2rem, 5vw, 4.2rem); line-height: 1; margin: 0 0 14px; }
     h2 { margin: 0 0 18px; }
     .eyebrow { color: #7dd3fc; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }

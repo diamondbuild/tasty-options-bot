@@ -88,6 +88,64 @@ def test_render_dashboard_html_contains_safe_local_dashboard_sections(tmp_path):
     assert "submit-close" not in html
 
 
+def test_render_dashboard_html_contains_refresh_candidate_account_quote_and_ticket_sections(tmp_path):
+    journal = Journal(tmp_path / "journal.jsonl")
+    journal.append(
+        JournalEvent(
+            event_type="account_balance_snapshot",
+            symbol="",
+            decision="read_only",
+            reason="balance_check",
+            payload={
+                "net_liquidating_value": 3042.50,
+                "cash_balance": 2900.25,
+                "option_buying_power": 1800.00,
+            },
+            created_at=datetime(2026, 5, 27, 13, 55, tzinfo=timezone.utc),
+        )
+    )
+    journal.append(
+        JournalEvent(
+            event_type="scanner_decision",
+            symbol="SPY",
+            decision="would_trade",
+            reason="passed_strategy_and_risk",
+            payload={
+                "strategy_type": "Put Credit Spread",
+                "expiration": "2026-06-26",
+                "dte": 30,
+                "short_strike": 595.0,
+                "long_strike": 590.0,
+                "short_option_symbol": "SPY   260626P00595000",
+                "long_option_symbol": "SPY   260626P00590000",
+                "short_delta": -0.2,
+                "credit": 1.0,
+                "max_loss": 400.0,
+                "credit_ratio": 0.2,
+                "quote_time": "2026-05-27T13:59:30+00:00",
+            },
+            created_at=datetime(2026, 5, 27, 14, 0, tzinfo=timezone.utc),
+        )
+    )
+    snapshot = build_dashboard_snapshot(config=BotConfig(), journal=journal, today=date(2026, 5, 27))
+
+    html = render_dashboard_html(snapshot)
+
+    assert "refresh" in html.lower()
+    assert "Scanner Candidates" in html
+    assert "Current Account / Balance" in html
+    assert "$3,042.50" in html
+    assert "Live Quote Timestamps" in html
+    assert "2026-05-27T13:59:30+00:00" in html
+    assert "Preview-Only Order Ticket" in html
+    assert "preview_only_not_submitted" in html
+    assert "sell_to_open" in html
+    assert "buy_to_open" in html
+    assert "SPY   260626P00595000" in html
+    assert "submit-open" not in html
+
+
+
 def test_dashboard_cli_exposes_safe_local_server_command():
     result = CliRunner().invoke(app, ["dashboard", "--help"])
 
