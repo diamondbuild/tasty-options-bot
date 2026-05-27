@@ -39,6 +39,71 @@ def test_live_dry_run_accepts_symbol_as_positional_argument(monkeypatch):
     assert "No option contracts returned for filters." in result.output
 
 
+def test_scheduler_runs_one_dry_run_cycle_without_live_submission(monkeypatch, tmp_path):
+    calls = []
+
+    def fake_live_dry_run(**kwargs):
+        calls.append(kwargs)
+
+    monkeypatch.setattr("tasty_options_bot.cli.live_dry_run", fake_live_dry_run)
+
+    result = CliRunner().invoke(
+        app,
+        ["scheduler", "--symbol", "SPY", "--cycles", "1", "--journal-path", str(tmp_path / "journal.jsonl")],
+    )
+
+    assert result.exit_code == 0
+    assert "Scheduler mode: dry-run" in result.output
+    assert "Scheduler safety: submit_open=False" in result.output
+    assert "Scheduler cycle 1/1" in result.output
+    assert len(calls) == 1
+    assert calls[0]["symbol"] == "SPY"
+    assert calls[0]["submit_open"] is False
+    assert calls[0]["ticket_preview"] is True
+
+
+def test_scheduler_refuses_live_submission_flag(tmp_path):
+    result = CliRunner().invoke(
+        app,
+        [
+            "scheduler",
+            "--symbol",
+            "SPY",
+            "--allow-live-submit",
+            "--journal-path",
+            str(tmp_path / "journal.jsonl"),
+        ],
+    )
+
+    assert result.exit_code != 0
+    assert "scheduler live submission is not supported" in result.output
+
+
+def test_scheduler_skips_cycle_when_kill_switch_active(monkeypatch, tmp_path):
+    journal_path = tmp_path / "journal.jsonl"
+    Journal(journal_path).append(
+        JournalEvent(
+            event_type="kill_switch_changed",
+            decision="enabled",
+            payload={"kill_switch_active": True},
+        )
+    )
+
+    def fail_live_dry_run(**kwargs):
+        raise AssertionError("scheduler should not scan when kill switch is active")
+
+    monkeypatch.setattr("tasty_options_bot.cli.live_dry_run", fail_live_dry_run)
+
+    result = CliRunner().invoke(
+        app,
+        ["scheduler", "--symbol", "SPY", "--cycles", "1", "--journal-path", str(journal_path)],
+    )
+
+    assert result.exit_code == 0
+    assert "Kill switch active: True" in result.output
+    assert "Skipping scheduler cycle because kill switch is active." in result.output
+
+
 def make_decision(action, *, short=725, long=720, credit=0.91, delta=-0.24, reason="passed_strategy_and_risk"):
     return ScannerDecision(
         action=action,

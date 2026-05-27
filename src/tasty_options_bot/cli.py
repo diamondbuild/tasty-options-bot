@@ -1,5 +1,6 @@
 """CLI entrypoint for tasty-options-bot."""
 
+import time
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
@@ -681,6 +682,73 @@ def live_dry_run(
         console.print("A live opening order submission was attempted after explicit confirmations.")
     else:
         console.print("Dry run only: no orders were placed.")
+
+
+@app.command("scheduler")
+def scheduler(
+    symbol: str = typer.Option("SPY", help="Underlying symbol to scan on each scheduler cycle."),
+    mode: str = typer.Option("dry-run", help="Scheduler mode. Only dry-run is supported."),
+    interval_seconds: int = typer.Option(300, help="Seconds between cycles when --cycles is greater than 1 or 0."),
+    cycles: int = typer.Option(1, help="Number of cycles to run. Use 0 for an indefinite daemon loop."),
+    allow_live_submit: bool = typer.Option(False, help="Refused by design; scheduler must not submit live orders."),
+    journal_path: Path = typer.Option(Path("data/journal.jsonl"), help="Audit journal JSONL path."),
+) -> None:
+    """Run a safety-gated dry-run scheduler loop without live order submission."""
+    normalized_mode = mode.lower().strip()
+    if normalized_mode != "dry-run":
+        raise typer.BadParameter("only dry-run scheduler mode is supported")
+    if allow_live_submit:
+        raise typer.BadParameter("scheduler live submission is not supported; run live-dry-run --submit-open manually")
+    if interval_seconds <= 0:
+        raise typer.BadParameter("--interval-seconds must be positive")
+    if cycles < 0:
+        raise typer.BadParameter("--cycles must be zero or positive")
+
+    config = load_config()
+    journal = Journal(journal_path)
+    cycle_label_total = "∞" if cycles == 0 else str(cycles)
+    console.print("Scheduler mode: dry-run")
+    console.print("Scheduler safety: submit_open=False")
+    console.print(f"Symbol: {symbol.upper()}")
+    console.print(f"Cycles: {cycle_label_total}")
+    console.print(f"Interval seconds: {interval_seconds}")
+    console.print("No live orders will be submitted by scheduler mode.")
+
+    cycle_number = 0
+    while cycles == 0 or cycle_number < cycles:
+        cycle_number += 1
+        console.print(f"Scheduler cycle {cycle_number}/{cycle_label_total}")
+        kill_switch_active = _effective_kill_switch_active(config, journal)
+        console.print(f"Kill switch active: {kill_switch_active}")
+        if kill_switch_active:
+            console.print("Skipping scheduler cycle because kill switch is active.")
+        else:
+            live_dry_run(
+                symbol=symbol.upper(),
+                dte_min=30,
+                dte_max=45,
+                max_contracts=100,
+                max_quote_age_seconds=120,
+                max_bid_ask_width=0.20,
+                spread_width=None,
+                min_credit_ratio=None,
+                short_delta_min=None,
+                short_delta_max=None,
+                max_position_loss=None,
+                max_open_risk=None,
+                max_open_positions=None,
+                preset=None,
+                best_only=True,
+                ticket_preview=True,
+                submit_open=False,
+                i_understand_live_order=False,
+                confirm_symbol=None,
+                max_entry_leg_bid_ask_width=None,
+                journal_path=journal_path,
+                max_results=10,
+            )
+        if cycles == 0 or cycle_number < cycles:
+            time.sleep(interval_seconds)
 
 
 @app.command("dry-run-demo")
