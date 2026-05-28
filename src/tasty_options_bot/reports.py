@@ -164,6 +164,8 @@ def _position_id(event) -> str:
         return str(position_id)
     symbol = event.symbol or str(event.payload.get("symbol", ""))
     expiration = str(event.payload.get("expiration", ""))
+    if event.event_type == "manual_live_trade_entered" and symbol and expiration:
+        return f"manual:{symbol}:{expiration}"
     short_symbol = str(event.payload.get("short_option_symbol", ""))
     long_symbol = str(event.payload.get("long_option_symbol", ""))
     return ":".join([symbol, expiration, short_symbol, long_symbol])

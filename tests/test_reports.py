@@ -102,6 +102,46 @@ def test_build_operator_report_summarizes_journal_state(tmp_path):
     assert "Readiness: BLOCKED" in text
 
 
+def test_operator_report_excludes_closed_manual_trade_without_open_position_id(tmp_path):
+    journal = Journal(tmp_path / "journal.jsonl")
+    journal.append(
+        JournalEvent(
+            event_type="manual_live_trade_entered",
+            symbol="SPY",
+            decision="entered_manually",
+            payload={
+                "expiration": "2026-06-26",
+                "short_option_symbol": "SPY   260626P00732000",
+                "long_option_symbol": "SPY   260626P00727000",
+                "short_strike": 732.0,
+                "long_strike": 727.0,
+                "credit": 1.0,
+                "quantity": 1,
+                "max_loss": 400.0,
+            },
+            created_at=datetime(2026, 5, 26, 14, 0, tzinfo=timezone.utc),
+        )
+    )
+    journal.append(
+        JournalEvent(
+            event_type="manual_live_trade_closed",
+            symbol="SPY",
+            decision="closed_manually",
+            payload={
+                "position_id": "manual:SPY:2026-06-26",
+                "realized_pnl": 17.0,
+            },
+            created_at=datetime(2026, 5, 28, 14, 0, tzinfo=timezone.utc),
+        )
+    )
+
+    report = build_operator_report(journal, today=date(2026, 5, 28))
+
+    assert report.open_positions == 0
+    assert report.open_risk == 0.0
+    assert report.realized_pnl_today == 17.0
+
+
 def test_report_cli_prints_summary_and_writes_markdown(tmp_path):
     journal_path = tmp_path / "journal.jsonl"
     reports_dir = tmp_path / "reports"
