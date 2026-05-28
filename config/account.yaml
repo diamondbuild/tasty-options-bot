@@ -1,7 +1,7 @@
 starting_equity: 3000
 max_position_loss: 100
 max_open_risk: 400
-max_open_positions: 3
+max_open_positions: 2
 max_daily_loss: 150
 max_weekly_loss: 300
 shutdown_equity: 2400

@@ -9,7 +9,7 @@ from tasty_options_bot.spreads import CreditSpread
 class AccountRiskLimits:
     max_position_loss: float = 100.0
     max_open_risk: float = 400.0
-    max_open_positions: int = 3
+    max_open_positions: int = 2
     max_daily_loss: float = 150.0
     max_weekly_loss: float = 300.0
     shutdown_equity: float = 2400.0

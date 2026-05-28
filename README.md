@@ -21,6 +21,7 @@ Safe operator commands:
 - `.venv/bin/python -m tasty_options_bot.cli readiness-check`
 - `.venv/bin/python -m tasty_options_bot.cli operator-runbook`
 - `.venv/bin/python -m tasty_options_bot.cli live-dry-run SPY --best-only --ticket-preview`
+- `.venv/bin/python -m tasty_options_bot.cli scan-watchlist --preset five-wide-research --max-contracts 500 --max-symbols 20`
 - `.venv/bin/python -m tasty_options_bot.cli scheduler --symbol SPY --cycles 1` (dry-run only; skips outside regular US market hours)
 - `.venv/bin/python -m tasty_options_bot.cli report --write-markdown`
 

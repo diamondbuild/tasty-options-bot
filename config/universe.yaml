@@ -1,10 +1,22 @@
 symbols:
+  # Core liquid index ETFs
   - SPY
   - QQQ
   - IWM
   - DIA
+  # Sector / macro ETFs
   - XLK
   - XLF
   - XLE
   - TLT
   - GLD
+  # Highly liquid large-cap options names for research scans
+  - AAPL
+  - MSFT
+  - NVDA
+  - AMZN
+  - META
+  - GOOGL
+  - TSLA
+  - AMD
+  - NFLX

@@ -7,6 +7,7 @@ from typing import Any
 from zoneinfo import ZoneInfo
 
 import typer
+import yaml
 from rich.console import Console
 from rich.table import Table
 
@@ -324,13 +325,101 @@ def _apply_live_dry_run_preset(
         "short_delta_min": 0.20,
         "short_delta_max": 0.30,
         "max_position_loss": 425.0,
-        "max_open_risk": 425.0,
-        "max_open_positions": 1,
+        "max_open_risk": 850.0,
+        "max_open_positions": 2,
     }
     for key, value in preset_values.items():
         if values[key] is None:
             values[key] = value
     return values
+
+
+def _load_watchlist_symbols(universe_path: Path) -> list[str]:
+    loaded = yaml.safe_load(universe_path.read_text()) if universe_path.exists() else None
+    if loaded is None:
+        config = load_config()
+        raw_symbols = config.strategy.universe
+    elif isinstance(loaded, dict):
+        raw_symbols = loaded.get("symbols", [])
+    elif isinstance(loaded, list):
+        raw_symbols = loaded
+    else:
+        raise typer.BadParameter(f"Expected symbols list in {universe_path}")
+
+    symbols: list[str] = []
+    seen: set[str] = set()
+    for raw_symbol in raw_symbols:
+        symbol = str(raw_symbol).upper().strip()
+        if not symbol or symbol in seen:
+            continue
+        symbols.append(symbol)
+        seen.add(symbol)
+    return symbols
+
+
+@app.command("scan-watchlist")
+def scan_watchlist(
+    symbols: list[str] | None = typer.Option(None, "--symbol", "-s", help="Symbol to scan. Repeat to override config/universe.yaml."),
+    universe_path: Path = typer.Option(Path("config/universe.yaml"), help="YAML watchlist path with a symbols list."),
+    max_symbols: int = typer.Option(20, help="Maximum watchlist symbols to scan in one read-only run."),
+    dte_min: int = 30,
+    dte_max: int = 45,
+    max_contracts: int = 100,
+    max_quote_age_seconds: int = 120,
+    max_bid_ask_width: float = 0.20,
+    spread_width: list[int] | None = typer.Option(None, "--spread-width", help="Allowed spread width. Repeat for multiple widths."),
+    min_credit_ratio: float | None = typer.Option(None, help="Research-only minimum credit / spread width override."),
+    short_delta_min: float | None = typer.Option(None, help="Research-only short delta minimum override."),
+    short_delta_max: float | None = typer.Option(None, help="Research-only short delta maximum override."),
+    max_position_loss: float | None = typer.Option(None, help="Research-only max position loss override."),
+    max_open_risk: float | None = typer.Option(None, help="Research-only max open risk override."),
+    max_open_positions: int | None = typer.Option(None, help="Research-only max open positions override."),
+    preset: str | None = typer.Option(None, help="Research preset. Currently supported: five-wide-research."),
+    best_only: bool = typer.Option(True, help="Show only the highest-ranked decision per symbol."),
+    ticket_preview: bool = typer.Option(True, help="Show non-submitting ticket previews for matching symbols."),
+    journal_path: Path = typer.Option(Path("data/journal.jsonl"), help="Audit journal JSONL path."),
+    max_results: int = typer.Option(10, help="Maximum decisions to display per symbol."),
+) -> None:
+    """Run read-only live dry-run scans across a configured watchlist."""
+    if max_symbols <= 0:
+        raise typer.BadParameter("--max-symbols must be positive")
+
+    selected_symbols = [symbol.upper().strip() for symbol in symbols or [] if symbol.strip()]
+    if not selected_symbols:
+        selected_symbols = _load_watchlist_symbols(universe_path)
+    selected_symbols = selected_symbols[:max_symbols]
+    if not selected_symbols:
+        console.print("No watchlist symbols configured.")
+        return
+
+    console.print(f"Watchlist scan: {len(selected_symbols)} symbols")
+    for selected_symbol in selected_symbols:
+        console.rule(f"{selected_symbol} dry-run scan")
+        live_dry_run(
+            symbol=selected_symbol,
+            dte_min=dte_min,
+            dte_max=dte_max,
+            max_contracts=max_contracts,
+            max_quote_age_seconds=max_quote_age_seconds,
+            max_bid_ask_width=max_bid_ask_width,
+            spread_width=spread_width,
+            min_credit_ratio=min_credit_ratio,
+            short_delta_min=short_delta_min,
+            short_delta_max=short_delta_max,
+            max_position_loss=max_position_loss,
+            max_open_risk=max_open_risk,
+            max_open_positions=max_open_positions,
+            preset=preset,
+            best_only=best_only,
+            ticket_preview=ticket_preview,
+            submit_open=False,
+            i_understand_live_order=False,
+            confirm_symbol=None,
+            max_entry_leg_bid_ask_width=None,
+            journal_path=journal_path,
+            max_results=max_results,
+        )
+    console.print("Dry-run watchlist scan only: no orders were placed.")
 
 
 def _rank_decisions(decisions):

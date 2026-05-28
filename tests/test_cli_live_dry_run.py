@@ -8,6 +8,7 @@ from tasty_options_bot.cli import (
     _build_risk_manager,
     _build_scanner_config,
     _effective_kill_switch_active,
+    _load_watchlist_symbols,
     _is_us_market_hours,
     _build_strategy,
     _format_decision_row,
@@ -362,7 +363,7 @@ def test_live_dry_run_risk_overrides_can_gate_five_wide_to_one_position():
     assert risk_manager.limits.max_open_positions == 1
     assert config.account.max_position_loss == 100
     assert config.account.max_open_risk == 400
-    assert config.account.max_open_positions == 3
+    assert config.account.max_open_positions == 2
 
 
 def test_build_risk_manager_uses_config_kill_switch():
@@ -449,8 +450,50 @@ def test_five_wide_research_preset_applies_tastytrade_style_dry_run_gates():
     assert overrides["short_delta_min"] == 0.20
     assert overrides["short_delta_max"] == 0.30
     assert overrides["max_position_loss"] == 425
-    assert overrides["max_open_risk"] == 425
-    assert overrides["max_open_positions"] == 1
+    assert overrides["max_open_risk"] == 850
+    assert overrides["max_open_positions"] == 2
+
+
+def test_load_watchlist_symbols_reads_normalized_deduped_yaml(tmp_path):
+    universe_path = tmp_path / "universe.yaml"
+    universe_path.write_text("symbols:\n  - spy\n  - QQQ\n  - SPY\n  - iwm\n")
+
+    assert _load_watchlist_symbols(universe_path) == ["SPY", "QQQ", "IWM"]
+
+
+def test_scan_watchlist_runs_read_only_scan_for_each_symbol(monkeypatch, tmp_path):
+    calls = []
+    universe_path = tmp_path / "universe.yaml"
+    universe_path.write_text("symbols:\n  - SPY\n  - QQQ\n  - IWM\n")
+
+    def fake_live_dry_run(**kwargs):
+        calls.append(kwargs)
+
+    monkeypatch.setattr("tasty_options_bot.cli.live_dry_run", fake_live_dry_run)
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "scan-watchlist",
+            "--universe-path",
+            str(universe_path),
+            "--preset",
+            "five-wide-research",
+            "--max-symbols",
+            "2",
+            "--journal-path",
+            str(tmp_path / "journal.jsonl"),
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert "Watchlist scan: 2 symbols" in result.output
+    assert "Dry-run watchlist scan only: no orders were placed." in result.output
+    assert [call["symbol"] for call in calls] == ["SPY", "QQQ"]
+    assert all(call["submit_open"] is False for call in calls)
+    assert all(call["best_only"] is True for call in calls)
+    assert all(call["ticket_preview"] is True for call in calls)
+    assert all(call["preset"] == "five-wide-research" for call in calls)
 
 
 def test_explicit_options_override_five_wide_research_preset_values():

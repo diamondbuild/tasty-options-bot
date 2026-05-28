@@ -17,7 +17,7 @@ def test_safe_account_defaults_match_small_account_risk_limits():
     assert config.account.starting_equity == 3000
     assert config.account.max_position_loss == 100
     assert config.account.max_open_risk == 400
-    assert config.account.max_open_positions == 3
+    assert config.account.max_open_positions == 2
     assert config.account.shutdown_equity == 2400
 
 

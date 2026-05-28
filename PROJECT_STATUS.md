@@ -9,7 +9,7 @@ Status:
 - Git branch: main
 - Working tree: clean
 - Python package version: 0.1.0
-- Tests passing: 170 passed
+- Tests passing: 176 passed
 - Ruff lint passing
 - Safety-first tastytrade defined-risk options bot
 - Live trading disabled by default
@@ -39,6 +39,7 @@ Available CLI commands:
 - balance
 - option-chain
 - live-dry-run
+- scan-watchlist
 - scheduler
 - dashboard
 - dry-run-demo
