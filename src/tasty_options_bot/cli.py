@@ -1275,14 +1275,25 @@ def _position_symbols(positions: list[dict]) -> set[str]:
     return {str(position.get("symbol", "")) for position in positions if _position_quantity(position) != 0}
 
 
-def _quote_bid_ask_by_symbol(items: list[dict]) -> dict[str, tuple[float, float]]:
+def _quote_bid_ask_by_symbol(items: list[dict]) -> dict[str, tuple[float, float, float]]:
     quotes = {}
     for item in items:
         try:
-            quotes[str(item["symbol"])] = (float(item["bid"]), float(item["ask"]))
+            bid = float(item["bid"])
+            ask = float(item["ask"])
+            mark = _quote_mark(item, bid=bid, ask=ask)
+            quotes[str(item["symbol"])] = (bid, ask, mark)
         except (KeyError, TypeError, ValueError):
             continue
     return quotes
+
+
+def _quote_mark(item: dict, *, bid: float, ask: float) -> float:
+    for key in ("mark", "mid"):
+        value = item.get(key)
+        if value not in (None, ""):
+            return float(value)
+    return round((bid + ask) / 2, 4)
 
 
 def _managed_position_from_manual_event(event: JournalEvent) -> ManagedPosition:
@@ -1603,11 +1614,12 @@ def manage_live_positions(
         quotes = _quote_bid_ask_by_symbol(market_items)
         if short_symbol not in quotes or long_symbol not in quotes:
             raise typer.BadParameter("missing bid/ask quote for one or more spread legs")
-        _short_bid, short_ask = quotes[short_symbol]
-        long_bid, long_ask = quotes[long_symbol]
+        _short_bid, short_ask, short_mark = quotes[short_symbol]
+        long_bid, long_ask, long_mark = quotes[long_symbol]
         short_width = round(short_ask - _short_bid, 2)
         long_width = round(long_ask - long_bid, 2)
         current_debit = round(short_ask - long_bid, 2)
+        mark_debit = round(short_mark - long_mark, 2)
         review_date = date.fromisoformat(today) if today is not None else datetime.now(timezone.utc).date()
         position = _managed_position_from_manual_event(event)
         decision = PositionManager(PositionManagerConfig()).evaluate(
@@ -1615,15 +1627,21 @@ def manage_live_positions(
             current_debit=current_debit,
             today=review_date,
         )
+        pnl_if_closed_at_mark = position.pnl_if_closed(mark_debit)
+        conservative_pnl_if_closed = position.pnl_if_closed(current_debit)
         journal.append(decision.to_journal_event())
 
         console.print(f"Short leg ask: ${short_ask:.2f}")
         console.print(f"Long leg bid: ${long_bid:.2f}")
+        console.print(f"Short leg mark: ${short_mark:.2f}")
+        console.print(f"Long leg mark: ${long_mark:.2f}")
         console.print(f"Short leg bid/ask width: ${short_width:.2f}")
         console.print(f"Long leg bid/ask width: ${long_width:.2f}")
-        console.print(f"Estimated debit to close: ${current_debit:.2f}")
+        console.print(f"Mark debit to close: ${mark_debit:.2f}")
+        console.print(f"P/L if closed: ${pnl_if_closed_at_mark:.2f}")
+        console.print(f"Conservative marketable debit to close: ${current_debit:.2f}")
+        console.print(f"Conservative P/L if closed: ${conservative_pnl_if_closed:.2f}")
         console.print(f"DTE: {decision.dte}")
-        console.print(f"P/L if closed: ${decision.realized_pnl_if_closed:.2f}")
         console.print(f"Action: {decision.action}")
         console.print(f"Reason: {decision.reason}")
         ticket = None

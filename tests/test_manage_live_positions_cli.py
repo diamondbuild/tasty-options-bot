@@ -42,8 +42,8 @@ def test_manage_live_positions_matches_journaled_spread_and_uses_live_quotes(mon
         def get_equity_option_market_data(self, symbols):
             calls["symbols"] = symbols
             return [
-                {"symbol": "SPY   260626P00732000", "bid": "0.70", "ask": "0.76"},
-                {"symbol": "SPY   260626P00727000", "bid": "0.20", "ask": "0.24"},
+                {"symbol": "SPY   260626P00732000", "bid": "0.70", "ask": "0.76", "mark": "0.70"},
+                {"symbol": "SPY   260626P00727000", "bid": "0.20", "ask": "0.24", "mark": "0.20"},
             ]
 
     monkeypatch.setattr("tasty_options_bot.cli.build_tastytrade_client", lambda: FakeClient())
@@ -66,8 +66,10 @@ def test_manage_live_positions_matches_journaled_spread_and_uses_live_quotes(mon
     assert calls["symbols"] == ["SPY   260626P00732000", "SPY   260626P00727000"]
     assert "Live position reconciliation" in result.output
     assert "Matched journaled spread: True" in result.output
-    assert "Estimated debit to close: $0.56" in result.output
-    assert "P/L if closed: $44.00" in result.output
+    assert "Mark debit to close: $0.50" in result.output
+    assert "P/L if closed: $50.00" in result.output
+    assert "Conservative marketable debit to close: $0.56" in result.output
+    assert "Conservative P/L if closed: $44.00" in result.output
     assert "Action: hold" in result.output
     assert "New entries blocked: True" in result.output
     assert "No orders were placed" in result.output
@@ -170,8 +172,8 @@ def test_manage_live_positions_does_not_print_close_preview_on_hold_without_forc
 
         def get_equity_option_market_data(self, symbols):
             return [
-                {"symbol": "SPY   260626P00732000", "bid": "0.70", "ask": "0.76"},
-                {"symbol": "SPY   260626P00727000", "bid": "0.20", "ask": "0.24"},
+                {"symbol": "SPY   260626P00732000", "bid": "0.70", "ask": "0.76", "mark": "0.70"},
+                {"symbol": "SPY   260626P00727000", "bid": "0.20", "ask": "0.24", "mark": "0.20"},
             ]
 
     monkeypatch.setattr("tasty_options_bot.cli.build_tastytrade_client", lambda: FakeClient())
@@ -210,8 +212,8 @@ def test_manage_live_positions_force_close_preview_allows_review_on_hold(monkeyp
 
         def get_equity_option_market_data(self, symbols):
             return [
-                {"symbol": "SPY   260626P00732000", "bid": "0.70", "ask": "0.76"},
-                {"symbol": "SPY   260626P00727000", "bid": "0.20", "ask": "0.24"},
+                {"symbol": "SPY   260626P00732000", "bid": "0.70", "ask": "0.76", "mark": "0.70"},
+                {"symbol": "SPY   260626P00727000", "bid": "0.20", "ask": "0.24", "mark": "0.20"},
             ]
 
     monkeypatch.setattr("tasty_options_bot.cli.build_tastytrade_client", lambda: FakeClient())
@@ -252,8 +254,8 @@ def test_manage_live_positions_submit_close_refuses_when_action_is_hold(monkeypa
 
         def get_equity_option_market_data(self, symbols):
             return [
-                {"symbol": "SPY   260626P00732000", "bid": "0.70", "ask": "0.76"},
-                {"symbol": "SPY   260626P00727000", "bid": "0.20", "ask": "0.24"},
+                {"symbol": "SPY   260626P00732000", "bid": "0.70", "ask": "0.76", "mark": "0.70"},
+                {"symbol": "SPY   260626P00727000", "bid": "0.20", "ask": "0.24", "mark": "0.20"},
             ]
 
         def submit_order_payload(self, payload, *, approved):
@@ -805,8 +807,8 @@ def test_manage_live_positions_can_manage_bot_filled_open_position(monkeypatch, 
 
         def get_equity_option_market_data(self, symbols):
             return [
-                {"symbol": "SPY   260626P00732000", "bid": "0.70", "ask": "0.76"},
-                {"symbol": "SPY   260626P00727000", "bid": "0.20", "ask": "0.24"},
+                {"symbol": "SPY   260626P00732000", "bid": "0.70", "ask": "0.76", "mark": "0.70"},
+                {"symbol": "SPY   260626P00727000", "bid": "0.20", "ask": "0.24", "mark": "0.20"},
             ]
 
     monkeypatch.setattr("tasty_options_bot.cli.build_tastytrade_client", lambda: FakeClient())
@@ -827,8 +829,10 @@ def test_manage_live_positions_can_manage_bot_filled_open_position(monkeypatch, 
 
     assert result.exit_code == 0
     assert "Matched journaled spread: True" in result.output
-    assert "Estimated debit to close: $0.56" in result.output
-    assert "P/L if closed: $44.00" in result.output
+    assert "Mark debit to close: $0.50" in result.output
+    assert "P/L if closed: $50.00" in result.output
+    assert "Conservative marketable debit to close: $0.56" in result.output
+    assert "Conservative P/L if closed: $44.00" in result.output
 
 
 def test_reconcile_submitted_orders_skips_already_filled_open_order(monkeypatch, tmp_path):
