@@ -1,0 +1,565 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Photo → 3D Print</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #0f0f11;
+      --surface: #1a1a1f;
+      --surface2: #22222a;
+      --border: #2e2e38;
+      --accent: #6c63ff;
+      --accent2: #a78bfa;
+      --text: #e8e8f0;
+      --muted: #8888a0;
+      --success: #22c55e;
+      --warn: #f59e0b;
+      --radius: 12px;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      padding: 2rem 1rem;
+    }
+
+    header {
+      text-align: center;
+      margin-bottom: 2.5rem;
+    }
+    header h1 {
+      font-size: 2rem;
+      font-weight: 700;
+      background: linear-gradient(135deg, var(--accent2), var(--accent));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+    header p { color: var(--muted); margin-top: .4rem; }
+
+    .container {
+      max-width: 860px;
+      margin: 0 auto;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1.5rem;
+    }
+    @media (max-width: 640px) { .container { grid-template-columns: 1fr; } }
+
+    /* ---- Card ---- */
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 1.5rem;
+    }
+    .card h2 {
+      font-size: .9rem;
+      text-transform: uppercase;
+      letter-spacing: .08em;
+      color: var(--muted);
+      margin-bottom: 1rem;
+    }
+
+    /* ---- Upload zone ---- */
+    .upload-zone {
+      border: 2px dashed var(--border);
+      border-radius: var(--radius);
+      padding: 2.5rem 1.5rem;
+      text-align: center;
+      cursor: pointer;
+      transition: border-color .2s, background .2s;
+      background: var(--surface2);
+      position: relative;
+    }
+    .upload-zone.dragover,
+    .upload-zone:hover { border-color: var(--accent); background: #1e1e2e; }
+    .upload-zone svg { width: 40px; height: 40px; color: var(--muted); margin-bottom: .75rem; }
+    .upload-zone p { color: var(--muted); font-size: .9rem; }
+    .upload-zone strong { color: var(--accent2); }
+    #file-input { display: none; }
+
+    /* ---- Preview ---- */
+    #preview-wrap {
+      display: none;
+      position: relative;
+    }
+    #preview-img {
+      width: 100%;
+      border-radius: 8px;
+      object-fit: cover;
+      max-height: 260px;
+    }
+    .replace-btn {
+      position: absolute;
+      top: 8px; right: 8px;
+      background: rgba(0,0,0,.7);
+      border: 1px solid var(--border);
+      color: var(--text);
+      border-radius: 6px;
+      padding: .25rem .65rem;
+      font-size: .75rem;
+      cursor: pointer;
+    }
+    .replace-btn:hover { background: rgba(108,99,255,.4); }
+
+    /* ---- Mode tabs ---- */
+    .tabs {
+      display: flex;
+      gap: .5rem;
+      margin-bottom: 1.25rem;
+    }
+    .tab {
+      flex: 1;
+      padding: .5rem;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: var(--surface2);
+      color: var(--muted);
+      font-size: .82rem;
+      cursor: pointer;
+      text-align: center;
+      transition: all .2s;
+    }
+    .tab.active {
+      border-color: var(--accent);
+      background: rgba(108,99,255,.15);
+      color: var(--accent2);
+    }
+    .tab:hover:not(.active) { border-color: #444; color: var(--text); }
+
+    /* ---- Settings ---- */
+    .field { margin-bottom: 1.1rem; }
+    .field label {
+      display: flex;
+      justify-content: space-between;
+      font-size: .82rem;
+      color: var(--muted);
+      margin-bottom: .35rem;
+    }
+    .field label span { color: var(--accent2); font-weight: 600; }
+    input[type="range"] {
+      width: 100%;
+      accent-color: var(--accent);
+    }
+
+    .toggle-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: .82rem;
+      color: var(--muted);
+    }
+    .toggle {
+      width: 38px; height: 20px;
+      background: var(--border);
+      border-radius: 10px;
+      position: relative;
+      cursor: pointer;
+      transition: background .2s;
+    }
+    .toggle.on { background: var(--accent); }
+    .toggle::after {
+      content: '';
+      position: absolute;
+      width: 14px; height: 14px;
+      background: #fff;
+      border-radius: 50%;
+      top: 3px; left: 3px;
+      transition: left .2s;
+    }
+    .toggle.on::after { left: 21px; }
+
+    .mode-panel { display: none; }
+    .mode-panel.active { display: block; }
+
+    /* ---- Convert button ---- */
+    .convert-btn {
+      width: 100%;
+      padding: .85rem;
+      background: linear-gradient(135deg, var(--accent), #8b5cf6);
+      color: #fff;
+      border: none;
+      border-radius: 10px;
+      font-size: 1rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: opacity .2s, transform .1s;
+      margin-top: .5rem;
+    }
+    .convert-btn:hover:not(:disabled) { opacity: .9; transform: translateY(-1px); }
+    .convert-btn:disabled { opacity: .4; cursor: not-allowed; }
+
+    /* ---- Progress/status ---- */
+    #status {
+      text-align: center;
+      font-size: .85rem;
+      padding: .6rem;
+      border-radius: 8px;
+      margin-top: .75rem;
+      display: none;
+    }
+    #status.loading { background: rgba(108,99,255,.1); color: var(--accent2); }
+    #status.success { background: rgba(34,197,94,.1); color: var(--success); }
+    #status.error   { background: rgba(239,68,68,.1); color: #f87171; }
+
+    /* ---- Spinner ---- */
+    .spinner {
+      display: inline-block;
+      width: 14px; height: 14px;
+      border: 2px solid currentColor;
+      border-top-color: transparent;
+      border-radius: 50%;
+      animation: spin .7s linear infinite;
+      vertical-align: middle;
+      margin-right: .4rem;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ---- Tips panel ---- */
+    .tips-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: .75rem;
+    }
+    @media (max-width: 640px) { .tips-grid { grid-template-columns: 1fr; } }
+    .tip-card {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: .85rem;
+    }
+    .tip-card h3 { font-size: .8rem; color: var(--accent2); margin-bottom: .4rem; }
+    .tip-card p  { font-size: .78rem; color: var(--muted); line-height: 1.5; }
+    .tip-card code {
+      background: var(--bg);
+      border-radius: 4px;
+      padding: .1rem .35rem;
+      font-size: .75rem;
+      color: var(--warn);
+    }
+
+    .full-width { grid-column: 1 / -1; }
+
+    /* ---- Size preview ---- */
+    #size-preview {
+      font-size: .75rem;
+      color: var(--muted);
+      text-align: center;
+      margin-top: .25rem;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Photo → 3D Print</h1>
+    <p>Convert photos to STL files ready for your Bambu Labs X1 Carbon</p>
+  </header>
+
+  <div class="container">
+    <!-- Left: Upload + Preview -->
+    <div>
+      <div class="card">
+        <h2>Image</h2>
+        <div class="upload-zone" id="drop-zone">
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
+              d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5"/>
+          </svg>
+          <p><strong>Click or drag</strong> a photo here</p>
+          <p style="margin-top:.35rem;font-size:.78rem;">JPEG · PNG · WEBP · BMP</p>
+          <input type="file" id="file-input" accept="image/*" />
+        </div>
+
+        <div id="preview-wrap">
+          <img id="preview-img" alt="preview" />
+          <button class="replace-btn" id="replace-btn">Replace</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Right: Settings -->
+    <div>
+      <div class="card">
+        <h2>Settings</h2>
+
+        <!-- Mode tabs -->
+        <div class="tabs">
+          <div class="tab active" data-mode="lithophane">Lithophane</div>
+          <div class="tab" data-mode="relief">Relief</div>
+          <div class="tab" data-mode="emboss">Emboss</div>
+        </div>
+
+        <!-- Common settings -->
+        <div class="field">
+          <label>Print width <span id="width-val">100 mm</span></label>
+          <input type="range" id="width-mm" min="30" max="250" step="5" value="100" />
+          <div id="size-preview">approx. 100 × 100 mm</div>
+        </div>
+
+        <div class="field">
+          <label>Resolution <span id="res-val">150 px</span></label>
+          <input type="range" id="resolution" min="50" max="350" step="25" value="150" />
+        </div>
+
+        <!-- Lithophane panel -->
+        <div class="mode-panel active" id="panel-lithophane">
+          <div class="field">
+            <label>Min thickness (bright areas) <span id="min-t-val">0.8 mm</span></label>
+            <input type="range" id="min-thickness" min="0.4" max="2.0" step="0.1" value="0.8" />
+          </div>
+          <div class="field">
+            <label>Max thickness (dark areas) <span id="max-t-val">3.0 mm</span></label>
+            <input type="range" id="max-thickness" min="1.5" max="6.0" step="0.1" value="3.0" />
+          </div>
+        </div>
+
+        <!-- Relief panel -->
+        <div class="mode-panel" id="panel-relief">
+          <div class="field">
+            <label>Base thickness <span id="base-val">1.0 mm</span></label>
+            <input type="range" id="base-mm" min="0.4" max="3.0" step="0.2" value="1.0" />
+          </div>
+          <div class="field">
+            <label>Relief height <span id="relief-val">3.0 mm</span></label>
+            <input type="range" id="relief-height" min="0.5" max="8.0" step="0.25" value="3.0" />
+          </div>
+        </div>
+
+        <!-- Emboss panel (shares same settings as relief) -->
+        <div class="mode-panel" id="panel-emboss">
+          <div class="field">
+            <label>Base thickness <span id="base-e-val">1.0 mm</span></label>
+            <input type="range" id="base-mm-e" min="0.4" max="3.0" step="0.2" value="1.0" />
+          </div>
+          <div class="field">
+            <label>Emboss height <span id="emboss-val">3.0 mm</span></label>
+            <input type="range" id="emboss-height" min="0.5" max="8.0" step="0.25" value="3.0" />
+          </div>
+        </div>
+
+        <div class="toggle-row" style="margin-bottom:1.1rem;">
+          <span>Smooth edges</span>
+          <div class="toggle on" id="smooth-toggle"></div>
+        </div>
+
+        <button class="convert-btn" id="convert-btn" disabled>
+          Convert &amp; Download STL
+        </button>
+        <div id="status"></div>
+      </div>
+    </div>
+
+    <!-- Bambu print tips — full width -->
+    <div class="card full-width">
+      <h2>Bambu Labs X1 Carbon Print Settings</h2>
+      <div class="tips-grid">
+        <div class="tip-card">
+          <h3>Lithophane</h3>
+          <p>
+            Filament: <code>White PLA / Translucent PETG</code><br>
+            Layer height: <code>0.1 mm</code><br>
+            Infill: <code>100%</code><br>
+            Print orientation: stand vertically on edge for best detail.<br>
+            Hold up to a window or LED panel to see the image.
+          </p>
+        </div>
+        <div class="tip-card">
+          <h3>Relief / Emboss</h3>
+          <p>
+            Filament: <code>Any PLA / PETG</code><br>
+            Layer height: <code>0.1–0.2 mm</code><br>
+            Infill: <code>15–20%</code><br>
+            Supports: <code>Off</code><br>
+            Works great for logos, portraits, and artwork.
+          </p>
+        </div>
+        <div class="tip-card">
+          <h3>Bambu Studio Setup</h3>
+          <p>
+            Open Bambu Studio → File → Import STL.<br>
+            Select <code>X1 Carbon</code> profile.<br>
+            Use <code>0.4 mm</code> nozzle for detail.<br>
+            Enable <code>AMS</code> for multi-color reliefs.
+          </p>
+        </div>
+        <div class="tip-card">
+          <h3>Best Photo Tips</h3>
+          <p>
+            High-contrast images work best.<br>
+            Portraits: use a plain background.<br>
+            For lithophanes, <code>B&amp;W photos</code> give the sharpest results.<br>
+            Larger prints (120–150 mm) show more detail.
+          </p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let currentFile = null;
+    let currentMode = 'lithophane';
+    let smoothOn = true;
+    let aspectRatio = 1;
+
+    // --- Upload / drag-drop ---
+    const dropZone = document.getElementById('drop-zone');
+    const fileInput = document.getElementById('file-input');
+    const previewWrap = document.getElementById('preview-wrap');
+    const previewImg = document.getElementById('preview-img');
+    const convertBtn = document.getElementById('convert-btn');
+
+    dropZone.addEventListener('click', () => fileInput.click());
+    document.getElementById('replace-btn').addEventListener('click', () => fileInput.click());
+
+    dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('dragover'); });
+    dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
+    dropZone.addEventListener('drop', e => {
+      e.preventDefault();
+      dropZone.classList.remove('dragover');
+      const file = e.dataTransfer.files[0];
+      if (file && file.type.startsWith('image/')) loadFile(file);
+    });
+
+    fileInput.addEventListener('change', () => {
+      if (fileInput.files[0]) loadFile(fileInput.files[0]);
+    });
+
+    function loadFile(file) {
+      currentFile = file;
+      const reader = new FileReader();
+      reader.onload = e => {
+        previewImg.src = e.target.result;
+        previewImg.onload = () => {
+          aspectRatio = previewImg.naturalHeight / previewImg.naturalWidth;
+          updateSizePreview();
+        };
+        dropZone.style.display = 'none';
+        previewWrap.style.display = 'block';
+        convertBtn.disabled = false;
+        setStatus('');
+      };
+      reader.readAsDataURL(file);
+    }
+
+    // --- Mode tabs ---
+    document.querySelectorAll('.tab').forEach(tab => {
+      tab.addEventListener('click', () => {
+        document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+        document.querySelectorAll('.mode-panel').forEach(p => p.classList.remove('active'));
+        tab.classList.add('active');
+        currentMode = tab.dataset.mode;
+        document.getElementById('panel-' + currentMode).classList.add('active');
+      });
+    });
+
+    // --- Smooth toggle ---
+    const smoothToggle = document.getElementById('smooth-toggle');
+    smoothToggle.addEventListener('click', () => {
+      smoothOn = !smoothOn;
+      smoothToggle.classList.toggle('on', smoothOn);
+    });
+
+    // --- Range display helpers ---
+    function bindRange(id, displayId, suffix) {
+      const el = document.getElementById(id);
+      const disp = document.getElementById(displayId);
+      const update = () => { disp.textContent = el.value + ' ' + suffix; };
+      el.addEventListener('input', update);
+      update();
+    }
+
+    bindRange('resolution', 'res-val', 'px');
+    bindRange('min-thickness', 'min-t-val', 'mm');
+    bindRange('max-thickness', 'max-t-val', 'mm');
+    bindRange('base-mm', 'base-val', 'mm');
+    bindRange('relief-height', 'relief-val', 'mm');
+    bindRange('base-mm-e', 'base-e-val', 'mm');
+    bindRange('emboss-height', 'emboss-val', 'mm');
+
+    const widthSlider = document.getElementById('width-mm');
+    widthSlider.addEventListener('input', () => {
+      document.getElementById('width-val').textContent = widthSlider.value + ' mm';
+      updateSizePreview();
+    });
+
+    function updateSizePreview() {
+      const w = parseFloat(widthSlider.value);
+      const h = (w * aspectRatio).toFixed(0);
+      document.getElementById('size-preview').textContent =
+        `approx. ${w} × ${h} mm`;
+    }
+
+    // --- Convert ---
+    convertBtn.addEventListener('click', async () => {
+      if (!currentFile) return;
+
+      setStatus('loading', 'Converting…');
+      convertBtn.disabled = true;
+
+      const form = new FormData();
+      form.append('file', currentFile);
+      form.append('mode', currentMode);
+      form.append('width_mm', document.getElementById('width-mm').value);
+      form.append('resolution', document.getElementById('resolution').value);
+      form.append('smooth', smoothOn ? 'true' : 'false');
+
+      if (currentMode === 'lithophane') {
+        form.append('min_thickness', document.getElementById('min-thickness').value);
+        form.append('max_thickness', document.getElementById('max-thickness').value);
+      } else if (currentMode === 'relief') {
+        form.append('base_mm', document.getElementById('base-mm').value);
+        form.append('relief_height_mm', document.getElementById('relief-height').value);
+      } else {
+        form.append('base_mm', document.getElementById('base-mm-e').value);
+        form.append('relief_height_mm', document.getElementById('emboss-height').value);
+      }
+
+      try {
+        const resp = await fetch('/convert', { method: 'POST', body: form });
+        if (!resp.ok) {
+          const text = await resp.text();
+          throw new Error(text || resp.statusText);
+        }
+
+        const blob = await resp.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+
+        // Get filename from Content-Disposition
+        const cd = resp.headers.get('Content-Disposition') || '';
+        const match = cd.match(/filename="([^"]+)"/);
+        a.download = match ? match[1] : 'model.stl';
+        a.href = url;
+        a.click();
+        URL.revokeObjectURL(url);
+
+        const sizeMb = (blob.size / 1048576).toFixed(1);
+        setStatus('success', `STL downloaded (${sizeMb} MB) — open in Bambu Studio!`);
+      } catch (err) {
+        setStatus('error', 'Error: ' + err.message);
+      } finally {
+        convertBtn.disabled = false;
+      }
+    });
+
+    function setStatus(type, msg) {
+      const el = document.getElementById('status');
+      if (!type) { el.style.display = 'none'; return; }
+      el.style.display = 'block';
+      el.className = type;
+      if (type === 'loading') {
+        el.innerHTML = `<span class="spinner"></span>${msg}`;
+      } else {
+        el.textContent = msg;
+      }
+    }
+  </script>
+</body>
+</html>
