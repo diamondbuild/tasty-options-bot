@@ -12,6 +12,13 @@ from rich.console import Console
 from rich.table import Table
 
 from tasty_options_bot import __version__
+from tasty_options_bot.pmcc import (
+    LeapPosition,
+    PMCCStore,
+    ShortCall,
+    compute_summary,
+    new_id,
+)
 from tasty_options_bot.broker.tastytrade_client import TastytradeClient, TastytradeClientConfig
 from tasty_options_bot.config import load_config, load_tastytrade_config_from_env
 from tasty_options_bot.dashboard import serve_dashboard
@@ -1883,6 +1890,292 @@ def report(
         path = write_markdown_report(operator_report, reports_dir)
         console.print(f"Markdown report written: {path}")
     console.print("No orders were placed; report is read-only.")
+
+
+# ---------------------------------------------------------------------------
+# Poor Man's Covered Call (PMCC) commands
+# ---------------------------------------------------------------------------
+
+
+@app.command("pmcc-add-leap")
+def pmcc_add_leap(
+    ticker: str = typer.Argument(..., help="Underlying ticker symbol (e.g. T)."),
+    strike: float = typer.Option(..., help="Long call strike price."),
+    expiration: str = typer.Option(..., help="LEAP expiration date YYYY-MM-DD."),
+    premium: float = typer.Option(..., help="Total debit paid for the LEAP (contracts × 100 × price)."),
+    contracts: int = typer.Option(1, help="Number of contracts purchased."),
+    date_purchased: str | None = typer.Option(None, help="Purchase date YYYY-MM-DD. Defaults to today."),
+    store_path: Path = typer.Option(Path("data/pmcc_positions.json"), help="PMCC data file."),
+) -> None:
+    """Record a new long LEAP call position (the foundation of a PMCC)."""
+    store = PMCCStore(path=store_path)
+    purchased = date.fromisoformat(date_purchased) if date_purchased else date.today()
+    leap = LeapPosition(
+        id=new_id(),
+        ticker=ticker.upper(),
+        date_purchased=purchased,
+        expiration=date.fromisoformat(expiration),
+        strike=strike,
+        premium_paid=premium,
+        contracts=contracts,
+    )
+    store.add_leap(leap)
+    summary = compute_summary(leap, [])
+    console.print(f"[green]LEAP recorded[/green] id={leap.id}")
+    console.print(f"  {leap.ticker}  {leap.expiration}  ${leap.strike:.2f} call  ×{leap.contracts}")
+    console.print(f"  Total cost: ${leap.premium_paid:.2f}")
+    console.print(f"  Cost basis/share: ${summary.cost_basis_per_share:.2f}")
+    console.print(f"  Breakeven: ${summary.breakeven_price:.2f}")
+    console.print(f"  Suggested short-call strikes: ${summary.suggested_strike_range[0]:.0f}–${summary.suggested_strike_range[1]:.0f}")
+
+
+@app.command("pmcc-add-short")
+def pmcc_add_short(
+    leap_id: str = typer.Argument(..., help="LEAP position ID to sell the call against."),
+    strike: float = typer.Option(..., help="Short call strike price."),
+    expiration: str = typer.Option(..., help="Short call expiration date YYYY-MM-DD."),
+    premium: float = typer.Option(..., help="Total credit received (contracts × 100 × price)."),
+    contracts: int = typer.Option(1, help="Number of contracts sold."),
+    commission: float = typer.Option(0.0, help="Commission paid."),
+    prob_otm: float | None = typer.Option(None, help="Probability OTM at entry (0–100, e.g. 75)."),
+    date_sold: str | None = typer.Option(None, help="Sale date YYYY-MM-DD. Defaults to today."),
+    store_path: Path = typer.Option(Path("data/pmcc_positions.json"), help="PMCC data file."),
+) -> None:
+    """Record a short call sold against an existing LEAP (premium collection leg)."""
+    store = PMCCStore(path=store_path)
+    leap = store.get_leap(leap_id)
+    if leap is None:
+        raise typer.BadParameter(f"No LEAP found with id={leap_id}. Run pmcc-list to see IDs.")
+    sold = date.fromisoformat(date_sold) if date_sold else date.today()
+    short = ShortCall(
+        id=new_id(),
+        leap_id=leap_id,
+        ticker=leap.ticker,
+        date_sold=sold,
+        expiration=date.fromisoformat(expiration),
+        strike=strike,
+        premium_collected=premium,
+        contracts=contracts,
+        commission=commission,
+        prob_otm=prob_otm / 100 if prob_otm is not None else None,
+    )
+    store.add_short_call(short)
+    shorts = store.load_short_calls()
+    summary = compute_summary(leap, shorts)
+    console.print(f"[green]Short call recorded[/green] id={short.id}")
+    console.print(f"  {short.ticker}  {short.expiration}  ${short.strike:.2f} call  ×{short.contracts}")
+    console.print(f"  Premium collected: ${short.premium_collected:.2f}")
+    console.print(f"  New cost basis/share: ${summary.cost_basis_per_share:.2f}")
+    console.print(f"  New breakeven: ${summary.breakeven_price:.2f}")
+    console.print(f"  Suggested next strikes: ${summary.suggested_strike_range[0]:.0f}–${summary.suggested_strike_range[1]:.0f}")
+
+
+@app.command("pmcc-close-short")
+def pmcc_close_short(
+    short_id: str = typer.Argument(..., help="Short call ID to close."),
+    exit_price: float = typer.Option(..., help="Total debit paid to close (contracts × 100 × price)."),
+    closed_date: str | None = typer.Option(None, help="Close date YYYY-MM-DD. Defaults to today."),
+    store_path: Path = typer.Option(Path("data/pmcc_positions.json"), help="PMCC data file."),
+) -> None:
+    """Record the closing of a short call (buyback)."""
+    store = PMCCStore(path=store_path)
+    short = store.get_short_call(short_id)
+    if short is None:
+        raise typer.BadParameter(f"No short call found with id={short_id}.")
+    short.exit_price = exit_price
+    short.closed_date = date.fromisoformat(closed_date) if closed_date else date.today()
+    store.update_short_call(short)
+    leap = store.get_leap(short.leap_id)
+    if leap:
+        shorts = store.load_short_calls()
+        summary = compute_summary(leap, shorts)
+        console.print(f"[green]Short call closed[/green] id={short_id}")
+        console.print(f"  Net premium this trade: ${short.net_premium:.2f}")
+        console.print(f"  Total premium collected so far: ${summary.total_premium_collected:.2f}")
+        console.print(f"  Updated cost basis/share: ${summary.cost_basis_per_share:.2f}")
+        console.print(f"  Updated breakeven: ${summary.breakeven_price:.2f}")
+    else:
+        console.print(f"[green]Short call closed[/green] id={short_id}  net=${short.net_premium:.2f}")
+
+
+@app.command("pmcc-close-leap")
+def pmcc_close_leap(
+    leap_id: str = typer.Argument(..., help="LEAP position ID to close."),
+    exit_price: float = typer.Option(..., help="Total credit received on close (contracts × 100 × price)."),
+    closed_date: str | None = typer.Option(None, help="Close date YYYY-MM-DD. Defaults to today."),
+    store_path: Path = typer.Option(Path("data/pmcc_positions.json"), help="PMCC data file."),
+) -> None:
+    """Record the closing of a LEAP position."""
+    store = PMCCStore(path=store_path)
+    leap = store.get_leap(leap_id)
+    if leap is None:
+        raise typer.BadParameter(f"No LEAP found with id={leap_id}.")
+    leap.exit_price = exit_price
+    leap.closed_date = date.fromisoformat(closed_date) if closed_date else date.today()
+    store.update_leap(leap)
+    shorts = store.load_short_calls()
+    summary = compute_summary(leap, shorts)
+    total = summary.total_premium_collected + (leap.exit_price - leap.premium_paid)
+    console.print(f"[green]LEAP closed[/green] id={leap_id}")
+    console.print(f"  LEAP P/L: ${leap.exit_price - leap.premium_paid:.2f}")
+    console.print(f"  Premium collected: ${summary.total_premium_collected:.2f}")
+    console.print(f"  Total position P/L: ${total:.2f}")
+
+
+@app.command("pmcc-update-leap-price")
+def pmcc_update_leap_price(
+    leap_id: str = typer.Argument(..., help="LEAP position ID."),
+    current_price: float = typer.Option(..., help="Current LEAP value (contracts × 100 × mark)."),
+    store_path: Path = typer.Option(Path("data/pmcc_positions.json"), help="PMCC data file."),
+) -> None:
+    """Update the current mark price of a LEAP for unrealized P/L tracking."""
+    store = PMCCStore(path=store_path)
+    leap = store.get_leap(leap_id)
+    if leap is None:
+        raise typer.BadParameter(f"No LEAP found with id={leap_id}.")
+    leap.current_price = current_price
+    store.update_leap(leap)
+    shorts = store.load_short_calls()
+    summary = compute_summary(leap, shorts)
+    console.print(f"[green]LEAP mark updated[/green] id={leap_id}")
+    if summary.leap_unrealized_pnl is not None:
+        console.print(f"  Unrealized LEAP P/L: ${summary.leap_unrealized_pnl:.2f}")
+
+
+@app.command("pmcc-status")
+def pmcc_status(
+    ticker: str | None = typer.Argument(None, help="Filter by ticker symbol. Shows all if omitted."),
+    store_path: Path = typer.Option(Path("data/pmcc_positions.json"), help="PMCC data file."),
+) -> None:
+    """Show full status of PMCC positions: cost basis, breakeven, premium history, strike guidance."""
+    store = PMCCStore(path=store_path)
+    summaries = store.summaries()
+    if not summaries:
+        console.print("No PMCC positions found. Use pmcc-add-leap to record a LEAP.")
+        return
+
+    if ticker:
+        summaries = [s for s in summaries if s.leap.ticker.upper() == ticker.upper()]
+        if not summaries:
+            console.print(f"No positions found for {ticker.upper()}.")
+            return
+
+    for summary in summaries:
+        leap = summary.leap
+        status_tag = "[green]OPEN[/green]" if leap.is_open else "[dim]CLOSED[/dim]"
+        console.print()
+        console.print(
+            f"[bold]{leap.ticker}[/bold]  {status_tag}  LEAP id={leap.id}"
+        )
+        console.print(
+            f"  LEAP: {leap.expiration}  ${leap.strike:.2f} call  ×{leap.contracts}"
+            f"  paid=${leap.premium_paid:.2f}"
+        )
+
+        # Cost basis table
+        cb_table = Table(show_header=True, header_style="bold cyan", box=None, pad_edge=False)
+        cb_table.add_column("Metric", style="dim")
+        cb_table.add_column("Value", justify="right")
+        cb_table.add_row("Premium paid (LEAP)", f"${leap.premium_paid:.2f}")
+        cb_table.add_row("Premium collected (closed shorts)", f"${summary.total_premium_collected:.2f}")
+        if summary.open_short_premium > 0:
+            cb_table.add_row("Open short premium (unrealized)", f"${summary.open_short_premium:.2f}")
+        cb_table.add_row("Cost basis (total $)", f"${summary.cost_basis_total:.2f}")
+        cb_table.add_row("Cost basis per share", f"${summary.cost_basis_per_share:.2f}")
+        cb_table.add_row("Breakeven price", f"[bold]${summary.breakeven_price:.2f}[/bold]")
+        if summary.leap_unrealized_pnl is not None:
+            color = "green" if summary.leap_unrealized_pnl >= 0 else "red"
+            cb_table.add_row(
+                "Unrealized LEAP P/L", f"[{color}]${summary.leap_unrealized_pnl:.2f}[/{color}]"
+            )
+        if summary.leap_realized_pnl is not None:
+            color = "green" if summary.leap_realized_pnl >= 0 else "red"
+            cb_table.add_row(
+                "Realized LEAP P/L", f"[{color}]${summary.leap_realized_pnl:.2f}[/{color}]"
+            )
+        cb_table.add_row(
+            "Suggested short strikes",
+            f"[bold yellow]${summary.suggested_strike_range[0]:.0f}–${summary.suggested_strike_range[1]:.0f}[/bold yellow]",
+        )
+        console.print(cb_table)
+
+        # Short call history
+        if summary.short_calls:
+            sc_table = Table(
+                title="Short Call History",
+                show_header=True,
+                header_style="bold magenta",
+                box=None,
+                pad_edge=False,
+            )
+            sc_table.add_column("id")
+            sc_table.add_column("Date Sold")
+            sc_table.add_column("Exp")
+            sc_table.add_column("Strike", justify="right")
+            sc_table.add_column("Collected", justify="right")
+            sc_table.add_column("Exit", justify="right")
+            sc_table.add_column("Net", justify="right")
+            sc_table.add_column("Status")
+            for sc in sorted(summary.short_calls, key=lambda s: s.date_sold):
+                exit_str = f"${sc.exit_price:.2f}" if sc.exit_price is not None else "—"
+                net_color = "green" if sc.net_premium >= 0 else "red"
+                sc_table.add_row(
+                    sc.id,
+                    sc.date_sold.isoformat(),
+                    sc.expiration.isoformat(),
+                    f"${sc.strike:.2f}",
+                    f"${sc.premium_collected:.2f}",
+                    exit_str,
+                    f"[{net_color}]${sc.net_premium:.2f}[/{net_color}]",
+                    "[green]OPEN[/green]" if sc.is_open else "[dim]closed[/dim]",
+                )
+            console.print(sc_table)
+        else:
+            console.print("  No short calls recorded yet.")
+
+
+@app.command("pmcc-list")
+def pmcc_list(
+    all_positions: bool = typer.Option(False, "--all", help="Show closed positions too."),
+    store_path: Path = typer.Option(Path("data/pmcc_positions.json"), help="PMCC data file."),
+) -> None:
+    """List all PMCC LEAP positions with summary stats."""
+    store = PMCCStore(path=store_path)
+    summaries = store.summaries()
+    if not summaries:
+        console.print("No PMCC positions found.")
+        return
+
+    if not all_positions:
+        summaries = [s for s in summaries if s.leap.is_open]
+
+    table = Table(title="PMCC Positions", show_header=True, header_style="bold cyan")
+    table.add_column("ID")
+    table.add_column("Ticker")
+    table.add_column("LEAP Exp")
+    table.add_column("Strike", justify="right")
+    table.add_column("Paid", justify="right")
+    table.add_column("Collected", justify="right")
+    table.add_column("Cost Basis/sh", justify="right")
+    table.add_column("Breakeven", justify="right")
+    table.add_column("Shorts")
+    table.add_column("Status")
+
+    for s in summaries:
+        table.add_row(
+            s.leap.id,
+            s.leap.ticker,
+            s.leap.expiration.isoformat(),
+            f"${s.leap.strike:.2f}",
+            f"${s.leap.premium_paid:.2f}",
+            f"${s.total_premium_collected:.2f}",
+            f"${s.cost_basis_per_share:.2f}",
+            f"${s.breakeven_price:.2f}",
+            str(len(s.short_calls)),
+            "[green]open[/green]" if s.leap.is_open else "[dim]closed[/dim]",
+        )
+
+    console.print(table)
 
 
 if __name__ == "__main__":
