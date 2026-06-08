@@ -9,7 +9,7 @@ from fastapi.staticfiles import StaticFiles
 
 from .converter import ConvertSettings, convert_image
 
-STATIC_DIR = Path(__file__).parent.parent.parent / "static"
+STATIC_DIR = Path(__file__).parent.parent / "static"
 
 app = FastAPI(title="Image to 3D Printer", version="1.0.0")
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
