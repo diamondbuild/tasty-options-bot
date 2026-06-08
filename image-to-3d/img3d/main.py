@@ -59,7 +59,7 @@ async def convert(
 
     # "none" = no visible base — use minimum printable thickness
     if base_shape == "none":
-        base_mm = 0.4
+        base_mm = 0.0
         base_shape = "rectangle"
     else:
         base_mm = max(0.4, min(5.0, base_mm))

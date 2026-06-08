@@ -164,6 +164,10 @@ def convert_image(image_data: bytes, settings: ConvertSettings) -> bytes:
         fill = 1.0 if settings.mode == "lithophane" else 0.0
         pixels = _apply_circle_mask(pixels, fill)
 
+    if use_fg and settings.base_mm == 0.0:
+        # No-base mode: snap near-background pixels to exactly zero so they don't print
+        pixels = np.where(pixels > 0.08, pixels, 0.0)
+
     if settings.mode == "lithophane":
         z_grid = settings.min_thickness_mm + (1.0 - pixels) * (
             settings.max_thickness_mm - settings.min_thickness_mm
