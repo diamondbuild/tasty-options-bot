@@ -3,22 +3,20 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Photo → 3D Print</title>
+  <title>Photo3D — Image to 3D Print</title>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
     :root {
-      --bg: #0f0f11;
-      --surface: #1a1a1f;
-      --surface2: #22222a;
-      --border: #2e2e38;
-      --accent: #6c63ff;
-      --accent2: #a78bfa;
-      --text: #e8e8f0;
-      --muted: #8888a0;
-      --success: #22c55e;
-      --warn: #f59e0b;
-      --radius: 12px;
+      --bg: #f0f2f0;
+      --white: #ffffff;
+      --teal: #1a6b55;
+      --teal-dark: #145244;
+      --teal-light: #eaf5f1;
+      --border: #dde3de;
+      --text: #1a2420;
+      --muted: #6b7a72;
+      --radius: 10px;
     }
 
     body {
@@ -26,539 +24,691 @@
       background: var(--bg);
       color: var(--text);
       min-height: 100vh;
-      padding: 2rem 1rem;
+      display: flex;
+      flex-direction: column;
     }
 
+    /* ── Header ── */
     header {
-      text-align: center;
-      margin-bottom: 2.5rem;
-    }
-    header h1 {
-      font-size: 2rem;
-      font-weight: 700;
-      background: linear-gradient(135deg, var(--accent2), var(--accent));
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
-      background-clip: text;
-    }
-    header p { color: var(--muted); margin-top: .4rem; }
-
-    .container {
-      max-width: 860px;
-      margin: 0 auto;
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 1.5rem;
-    }
-    @media (max-width: 640px) { .container { grid-template-columns: 1fr; } }
-
-    /* ---- Card ---- */
-    .card {
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: var(--radius);
-      padding: 1.5rem;
-    }
-    .card h2 {
-      font-size: .9rem;
-      text-transform: uppercase;
-      letter-spacing: .08em;
-      color: var(--muted);
-      margin-bottom: 1rem;
-    }
-
-    /* ---- Upload zone ---- */
-    .upload-zone {
-      border: 2px dashed var(--border);
-      border-radius: var(--radius);
-      padding: 2.5rem 1.5rem;
-      text-align: center;
-      cursor: pointer;
-      transition: border-color .2s, background .2s;
-      background: var(--surface2);
-      position: relative;
-    }
-    .upload-zone.dragover,
-    .upload-zone:hover { border-color: var(--accent); background: #1e1e2e; }
-    .upload-zone svg { width: 40px; height: 40px; color: var(--muted); margin-bottom: .75rem; }
-    .upload-zone p { color: var(--muted); font-size: .9rem; }
-    .upload-zone strong { color: var(--accent2); }
-    #file-input { display: none; }
-
-    /* ---- Preview ---- */
-    #preview-wrap {
-      display: none;
-      position: relative;
-    }
-    #preview-img {
-      width: 100%;
-      border-radius: 8px;
-      object-fit: cover;
-      max-height: 260px;
-    }
-    .replace-btn {
-      position: absolute;
-      top: 8px; right: 8px;
-      background: rgba(0,0,0,.7);
-      border: 1px solid var(--border);
-      color: var(--text);
-      border-radius: 6px;
-      padding: .25rem .65rem;
-      font-size: .75rem;
-      cursor: pointer;
-    }
-    .replace-btn:hover { background: rgba(108,99,255,.4); }
-
-    /* ---- Mode tabs ---- */
-    .tabs {
-      display: flex;
-      gap: .5rem;
-      margin-bottom: 1.25rem;
-    }
-    .tab {
-      flex: 1;
-      padding: .5rem;
-      border: 1px solid var(--border);
-      border-radius: 8px;
-      background: var(--surface2);
-      color: var(--muted);
-      font-size: .82rem;
-      cursor: pointer;
-      text-align: center;
-      transition: all .2s;
-    }
-    .tab.active {
-      border-color: var(--accent);
-      background: rgba(108,99,255,.15);
-      color: var(--accent2);
-    }
-    .tab:hover:not(.active) { border-color: #444; color: var(--text); }
-
-    /* ---- Settings ---- */
-    .field { margin-bottom: 1.1rem; }
-    .field label {
-      display: flex;
-      justify-content: space-between;
-      font-size: .82rem;
-      color: var(--muted);
-      margin-bottom: .35rem;
-    }
-    .field label span { color: var(--accent2); font-weight: 600; }
-    input[type="range"] {
-      width: 100%;
-      accent-color: var(--accent);
-    }
-
-    .toggle-row {
+      background: var(--white);
+      border-bottom: 1px solid var(--border);
+      padding: 0 2rem;
+      height: 56px;
       display: flex;
       align-items: center;
       justify-content: space-between;
-      font-size: .82rem;
-      color: var(--muted);
+      flex-shrink: 0;
     }
-    .toggle {
-      width: 38px; height: 20px;
-      background: var(--border);
-      border-radius: 10px;
-      position: relative;
-      cursor: pointer;
-      transition: background .2s;
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: .55rem;
+      font-weight: 700;
+      font-size: 1.05rem;
+      color: var(--teal-dark);
+      letter-spacing: -.01em;
     }
-    .toggle.on { background: var(--accent); }
-    .toggle::after {
-      content: '';
-      position: absolute;
-      width: 14px; height: 14px;
-      background: #fff;
+    .logo svg { width: 28px; height: 28px; }
+    nav { display: flex; align-items: center; gap: 1.5rem; }
+    nav a { font-size: .85rem; color: var(--muted); text-decoration: none; }
+    nav a:hover { color: var(--teal); }
+    .avatar {
+      width: 30px; height: 30px;
       border-radius: 50%;
-      top: 3px; left: 3px;
-      transition: left .2s;
+      background: var(--teal);
+      display: flex; align-items: center; justify-content: center;
+      color: #fff; font-size: .75rem; font-weight: 600;
     }
-    .toggle.on::after { left: 21px; }
 
-    .mode-panel { display: none; }
-    .mode-panel.active { display: block; }
-
-    /* ---- Convert button ---- */
-    .convert-btn {
-      width: 100%;
-      padding: .85rem;
-      background: linear-gradient(135deg, var(--accent), #8b5cf6);
-      color: #fff;
-      border: none;
-      border-radius: 10px;
-      font-size: 1rem;
-      font-weight: 600;
-      cursor: pointer;
-      transition: opacity .2s, transform .1s;
-      margin-top: .5rem;
+    /* ── Progress ── */
+    .progress-bar {
+      background: var(--white);
+      border-bottom: 1px solid var(--border);
+      padding: .85rem 2rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
     }
-    .convert-btn:hover:not(:disabled) { opacity: .9; transform: translateY(-1px); }
-    .convert-btn:disabled { opacity: .4; cursor: not-allowed; }
+    .step-item {
+      display: flex; align-items: center; gap: .45rem;
+      font-size: .73rem; font-weight: 600;
+      letter-spacing: .07em; text-transform: uppercase;
+      color: #b0bab4;
+    }
+    .step-item.active { color: var(--teal-dark); }
+    .step-item.done   { color: var(--teal); }
+    .step-dot { width: 7px; height: 7px; border-radius: 50%; background: #d0d8d2; }
+    .step-item.active .step-dot { background: var(--teal-dark); }
+    .step-item.done   .step-dot { background: var(--teal); }
+    .step-line { width: 72px; height: 2px; background: #d0d8d2; margin: 0 .65rem; }
+    .step-line.done { background: var(--teal); }
 
-    /* ---- Progress/status ---- */
-    #status {
+    /* ── Layout ── */
+    .layout {
+      flex: 1;
+      display: grid;
+      grid-template-columns: 300px 1fr 220px;
+      overflow: hidden;
+      max-height: calc(100vh - 105px);
+    }
+
+    /* ── Left panel ── */
+    .left-panel {
+      background: var(--white);
+      border-right: 1px solid var(--border);
+      padding: 1.5rem;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 1.1rem;
+    }
+
+    /* Upload zone */
+    .upload-zone {
+      border: 2px dashed var(--border);
+      border-radius: var(--radius);
+      background: var(--bg);
+      padding: 2.5rem 1rem;
       text-align: center;
-      font-size: .85rem;
-      padding: .6rem;
-      border-radius: 8px;
-      margin-top: .75rem;
-      display: none;
+      cursor: pointer;
+      transition: border-color .2s, background .2s;
+      flex: 1;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      gap: .75rem;
+      min-height: 260px;
     }
-    #status.loading { background: rgba(108,99,255,.1); color: var(--accent2); }
-    #status.success { background: rgba(34,197,94,.1); color: var(--success); }
-    #status.error   { background: rgba(239,68,68,.1); color: #f87171; }
+    .upload-zone:hover, .upload-zone.dragover {
+      border-color: var(--teal); background: var(--teal-light);
+    }
+    .upload-zone svg { color: #a0b0a8; }
+    .upload-zone p { font-size: .85rem; color: var(--muted); }
+    .upload-zone strong { color: var(--teal); }
+    #file-input { display: none; }
 
-    /* ---- Spinner ---- */
-    .spinner {
-      display: inline-block;
-      width: 14px; height: 14px;
-      border: 2px solid currentColor;
-      border-top-color: transparent;
-      border-radius: 50%;
-      animation: spin .7s linear infinite;
-      vertical-align: middle;
-      margin-right: .4rem;
+    /* Thumbnail */
+    .thumb-wrap { position: relative; border-radius: 8px; overflow: hidden; border: 1px solid var(--border); }
+    .thumb-wrap img { width: 100%; display: block; max-height: 140px; object-fit: cover; }
+    .thumb-replace {
+      position: absolute; top: 6px; right: 6px;
+      background: rgba(255,255,255,.92);
+      border: 1px solid var(--border);
+      border-radius: 5px; padding: .2rem .5rem;
+      font-size: .72rem; color: var(--teal); cursor: pointer; font-weight: 600;
     }
+
+    /* Fields */
+    .field-label {
+      font-size: .78rem; color: var(--muted);
+      display: flex; justify-content: space-between;
+      margin-bottom: .3rem;
+    }
+    .field-label span { color: var(--teal-dark); font-weight: 600; }
+    input[type="range"] { width: 100%; accent-color: var(--teal-dark); cursor: pointer; }
+
+    .detail-row { display: flex; gap: .4rem; }
+    .detail-btn {
+      flex: 1; padding: .35rem;
+      border: 1px solid var(--border);
+      border-radius: 6px; background: var(--bg);
+      color: var(--muted); font-size: .78rem; cursor: pointer; text-align: center;
+      transition: all .15s;
+    }
+    .detail-btn.active {
+      border-color: var(--teal); background: var(--teal-light);
+      color: var(--teal-dark); font-weight: 600;
+    }
+
+    select {
+      width: 100%; padding: .45rem .65rem;
+      border: 1px solid var(--border); border-radius: 6px;
+      background: var(--white); color: var(--text); font-size: .85rem; cursor: pointer;
+      appearance: none;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%236b7a72' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
+      background-repeat: no-repeat; background-position: right .65rem center;
+    }
+
+    .section-label {
+      font-size: .72rem; font-weight: 600;
+      text-transform: uppercase; letter-spacing: .07em; color: var(--muted);
+    }
+    .pill-row { display: flex; gap: .4rem; flex-wrap: wrap; }
+    .pill {
+      padding: .3rem .75rem;
+      border: 1px solid var(--border); border-radius: 20px;
+      background: var(--bg); color: var(--muted); font-size: .75rem; cursor: pointer;
+      transition: all .15s;
+    }
+    .pill.active {
+      border-color: var(--teal); background: var(--teal-light);
+      color: var(--teal-dark); font-weight: 600;
+    }
+
+    .btn-primary {
+      width: 100%; padding: .75rem;
+      background: var(--teal-dark); color: #fff;
+      border: none; border-radius: 8px;
+      font-size: .9rem; font-weight: 600; cursor: pointer;
+      transition: background .15s;
+    }
+    .btn-primary:hover:not(:disabled) { background: var(--teal); }
+    .btn-primary:disabled { opacity: .4; cursor: not-allowed; }
+
+    /* ── Canvas area ── */
+    .canvas-area {
+      position: relative; background: #d8e4dc;
+      display: flex; align-items: center; justify-content: center;
+      overflow: hidden;
+    }
+    #three-canvas { display: block; width: 100% !important; height: 100% !important; }
+
+    .canvas-placeholder {
+      position: absolute; inset: 0;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      gap: .75rem; color: #8aa898; pointer-events: none;
+    }
+    .canvas-placeholder svg { opacity: .35; }
+    .canvas-placeholder p { font-size: .85rem; opacity: .6; text-align: center; padding: 0 2rem; }
+
+    .canvas-controls {
+      position: absolute; top: 12px; right: 12px;
+      display: flex; flex-direction: column; gap: .4rem;
+      opacity: 0; transition: opacity .25s;
+    }
+    .canvas-area:hover .canvas-controls { opacity: 1; }
+    .ctrl-btn {
+      width: 34px; height: 34px;
+      background: rgba(255,255,255,.85); border: 1px solid rgba(0,0,0,.08);
+      border-radius: 6px; display: flex; align-items: center; justify-content: center;
+      cursor: pointer; color: var(--text); font-size: 1.05rem; font-weight: 600;
+      transition: background .15s;
+    }
+    .ctrl-btn:hover { background: #fff; }
+    .ctrl-btn svg { width: 15px; height: 15px; }
+
+    .canvas-info {
+      position: absolute; bottom: 12px; left: 12px;
+      background: rgba(255,255,255,.88); border: 1px solid rgba(0,0,0,.06);
+      border-radius: 6px; padding: .4rem .75rem;
+      font-size: .75rem; color: var(--muted); display: none;
+    }
+    .canvas-info span { color: var(--text); font-weight: 500; margin-left: .3rem; }
+
+    .canvas-spinner {
+      position: absolute; inset: 0;
+      background: rgba(216,228,220,.75);
+      display: none; align-items: center; justify-content: center;
+      flex-direction: column; gap: .75rem;
+    }
+    .canvas-spinner.show { display: flex; }
+    .spinner-ring {
+      width: 44px; height: 44px;
+      border: 3px solid rgba(26,107,85,.2);
+      border-top-color: var(--teal-dark);
+      border-radius: 50%; animation: spin .8s linear infinite;
+    }
+    .canvas-spinner p { font-size: .82rem; color: var(--teal-dark); font-weight: 500; }
     @keyframes spin { to { transform: rotate(360deg); } }
 
-    /* ---- Tips panel ---- */
-    .tips-grid {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: .75rem;
+    /* ── Right panel ── */
+    .right-panel {
+      background: var(--white); border-left: 1px solid var(--border);
+      padding: 1.5rem 1.25rem;
+      display: flex; flex-direction: column; gap: 1rem; overflow-y: auto;
     }
-    @media (max-width: 640px) { .tips-grid { grid-template-columns: 1fr; } }
-    .tip-card {
-      background: var(--surface2);
-      border: 1px solid var(--border);
-      border-radius: 8px;
-      padding: .85rem;
+    .right-panel h3 {
+      font-size: .75rem; font-weight: 700;
+      text-transform: uppercase; letter-spacing: .08em; color: var(--muted);
     }
-    .tip-card h3 { font-size: .8rem; color: var(--accent2); margin-bottom: .4rem; }
-    .tip-card p  { font-size: .78rem; color: var(--muted); line-height: 1.5; }
-    .tip-card code {
-      background: var(--bg);
-      border-radius: 4px;
-      padding: .1rem .35rem;
-      font-size: .75rem;
-      color: var(--warn);
+    .btn-outline {
+      width: 100%; padding: .65rem;
+      border: 1.5px solid var(--teal-dark); border-radius: 8px;
+      background: var(--white); color: var(--teal-dark);
+      font-size: .85rem; font-weight: 600; cursor: pointer;
+      display: flex; align-items: center; justify-content: center; gap: .4rem;
+      transition: background .15s;
     }
+    .btn-outline:hover { background: var(--teal-light); }
+    .btn-outline:disabled { opacity: .35; cursor: not-allowed; }
+    .btn-outline svg { width: 14px; height: 14px; }
+    .divider { border: none; border-top: 1px solid var(--border); }
+    .file-meta { font-size: .78rem; color: var(--muted); }
+    .file-meta dl { display: grid; grid-template-columns: auto 1fr; gap: .2rem .6rem; }
+    .file-meta dt { font-weight: 600; color: var(--text); }
+    .tip-box {
+      background: var(--teal-light); border-radius: 8px;
+      padding: .85rem; font-size: .75rem; color: var(--muted); line-height: 1.6;
+    }
+    .tip-box strong { color: var(--teal-dark); display: block; margin-bottom: .3rem; }
 
-    .full-width { grid-column: 1 / -1; }
-
-    /* ---- Size preview ---- */
-    #size-preview {
-      font-size: .75rem;
-      color: var(--muted);
-      text-align: center;
-      margin-top: .25rem;
+    /* Toast */
+    #toast {
+      position: fixed; bottom: 1.5rem; left: 50%;
+      transform: translateX(-50%);
+      background: #dc2626; color: #fff;
+      padding: .6rem 1.25rem; border-radius: 8px;
+      font-size: .85rem; display: none; z-index: 100;
     }
   </style>
 </head>
 <body>
+
   <header>
-    <h1>Photo → 3D Print</h1>
-    <p>Convert photos to STL files ready for your Bambu Labs X1 Carbon</p>
+    <div class="logo">
+      <svg viewBox="0 0 28 28" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <polygon points="14,2 26,8 26,20 14,26 2,20 2,8" fill="#1a6b55" opacity=".12"/>
+        <polygon points="14,4 24,9.5 24,19.5 14,25 4,19.5 4,9.5" fill="none" stroke="#1a6b55" stroke-width="1.5"/>
+        <polygon points="14,8 20,11.5 20,17.5 14,21 8,17.5 8,11.5" fill="#1a6b55"/>
+      </svg>
+      Photo3D
+    </div>
+    <nav>
+      <a href="#">New Project</a>
+      <a href="#">Gallery</a>
+      <div class="avatar">J</div>
+    </nav>
   </header>
 
-  <div class="container">
-    <!-- Left: Upload + Preview -->
-    <div>
-      <div class="card">
-        <h2>Image</h2>
+  <div class="progress-bar">
+    <div class="step-item active" id="step-ind-1"><div class="step-dot"></div>1. Upload</div>
+    <div class="step-line" id="line-1"></div>
+    <div class="step-item" id="step-ind-2"><div class="step-dot"></div>2. Configure</div>
+    <div class="step-line" id="line-2"></div>
+    <div class="step-item" id="step-ind-3"><div class="step-dot"></div>3. Preview &amp; Download</div>
+  </div>
+
+  <div class="layout">
+
+    <!-- Left -->
+    <aside class="left-panel">
+
+      <div id="step1-content">
         <div class="upload-zone" id="drop-zone">
-          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
+          <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+            <path stroke-linecap="round" stroke-linejoin="round"
               d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5"/>
           </svg>
-          <p><strong>Click or drag</strong> a photo here</p>
-          <p style="margin-top:.35rem;font-size:.78rem;">JPEG · PNG · WEBP · BMP</p>
+          <p><strong>Click or drag a photo here</strong></p>
+          <p>JPEG · PNG · WEBP · BMP</p>
           <input type="file" id="file-input" accept="image/*" />
         </div>
+      </div>
 
-        <div id="preview-wrap">
-          <img id="preview-img" alt="preview" />
-          <button class="replace-btn" id="replace-btn">Replace</button>
+      <div id="step2-content" style="display:none;flex-direction:column;gap:1.1rem;">
+
+        <div class="thumb-wrap" id="thumb-wrap">
+          <img id="thumb-img" alt="uploaded" />
+          <div class="thumb-replace" id="thumb-replace">Replace</div>
+        </div>
+
+        <div>
+          <div class="field-label">Extrusion Depth <span id="depth-val">3.5 mm</span></div>
+          <input type="range" id="depth" min="0.5" max="8" step="0.25" value="3.5" />
+        </div>
+
+        <div>
+          <div class="field-label">Detail Level</div>
+          <div class="detail-row">
+            <div class="detail-btn" data-res="75">Low</div>
+            <div class="detail-btn active" data-res="150">Medium</div>
+            <div class="detail-btn" data-res="250">High</div>
+          </div>
+        </div>
+
+        <div>
+          <div class="field-label">Base Type</div>
+          <select id="base-type">
+            <option value="rectangle">Flat Rectangle</option>
+            <option value="circle">Flat Circle</option>
+          </select>
+        </div>
+
+        <div>
+          <div class="field-label">Print Width <span id="width-val">100 mm</span></div>
+          <input type="range" id="width-mm" min="40" max="200" step="5" value="100" />
+        </div>
+
+        <div>
+          <div class="section-label" style="margin-bottom:.5rem;">Effect</div>
+          <div class="pill-row">
+            <div class="pill active" data-mode="relief">Relief</div>
+            <div class="pill" data-mode="emboss">Emboss</div>
+            <div class="pill" data-mode="lithophane">Lithophane</div>
+          </div>
+        </div>
+
+        <button class="btn-primary" id="generate-btn">Generate 3D Preview</button>
+
+      </div>
+    </aside>
+
+    <!-- Center canvas -->
+    <section class="canvas-area" id="canvas-area">
+      <canvas id="three-canvas"></canvas>
+
+      <div class="canvas-placeholder" id="canvas-placeholder">
+        <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
+          <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
+        </svg>
+        <p>Upload an image and click<br>"Generate 3D Preview"</p>
+      </div>
+
+      <div class="canvas-controls">
+        <div class="ctrl-btn" id="zoom-in">+</div>
+        <div class="ctrl-btn" id="zoom-out">−</div>
+        <div class="ctrl-btn" id="reset-cam" title="Reset view">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round"
+              d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99"/>
+          </svg>
         </div>
       </div>
-    </div>
 
-    <!-- Right: Settings -->
-    <div>
-      <div class="card">
-        <h2>Settings</h2>
-
-        <!-- Mode tabs -->
-        <div class="tabs">
-          <div class="tab active" data-mode="lithophane">Lithophane</div>
-          <div class="tab" data-mode="relief">Relief</div>
-          <div class="tab" data-mode="emboss">Emboss</div>
-        </div>
-
-        <!-- Common settings -->
-        <div class="field">
-          <label>Print width <span id="width-val">100 mm</span></label>
-          <input type="range" id="width-mm" min="30" max="250" step="5" value="100" />
-          <div id="size-preview">approx. 100 × 100 mm</div>
-        </div>
-
-        <div class="field">
-          <label>Resolution <span id="res-val">150 px</span></label>
-          <input type="range" id="resolution" min="50" max="350" step="25" value="150" />
-        </div>
-
-        <!-- Lithophane panel -->
-        <div class="mode-panel active" id="panel-lithophane">
-          <div class="field">
-            <label>Min thickness (bright areas) <span id="min-t-val">0.8 mm</span></label>
-            <input type="range" id="min-thickness" min="0.4" max="2.0" step="0.1" value="0.8" />
-          </div>
-          <div class="field">
-            <label>Max thickness (dark areas) <span id="max-t-val">3.0 mm</span></label>
-            <input type="range" id="max-thickness" min="1.5" max="6.0" step="0.1" value="3.0" />
-          </div>
-        </div>
-
-        <!-- Relief panel -->
-        <div class="mode-panel" id="panel-relief">
-          <div class="field">
-            <label>Base thickness <span id="base-val">1.0 mm</span></label>
-            <input type="range" id="base-mm" min="0.4" max="3.0" step="0.2" value="1.0" />
-          </div>
-          <div class="field">
-            <label>Relief height <span id="relief-val">3.0 mm</span></label>
-            <input type="range" id="relief-height" min="0.5" max="8.0" step="0.25" value="3.0" />
-          </div>
-        </div>
-
-        <!-- Emboss panel (shares same settings as relief) -->
-        <div class="mode-panel" id="panel-emboss">
-          <div class="field">
-            <label>Base thickness <span id="base-e-val">1.0 mm</span></label>
-            <input type="range" id="base-mm-e" min="0.4" max="3.0" step="0.2" value="1.0" />
-          </div>
-          <div class="field">
-            <label>Emboss height <span id="emboss-val">3.0 mm</span></label>
-            <input type="range" id="emboss-height" min="0.5" max="8.0" step="0.25" value="3.0" />
-          </div>
-        </div>
-
-        <div class="toggle-row" style="margin-bottom:1.1rem;">
-          <span>Smooth edges</span>
-          <div class="toggle on" id="smooth-toggle"></div>
-        </div>
-
-        <button class="convert-btn" id="convert-btn" disabled>
-          Convert &amp; Download STL
-        </button>
-        <div id="status"></div>
+      <div class="canvas-info" id="canvas-info">
+        Format:<span>STL</span> &nbsp;|&nbsp; Print Size:<span id="print-size">—</span>
       </div>
-    </div>
 
-    <!-- Bambu print tips — full width -->
-    <div class="card full-width">
-      <h2>Bambu Labs X1 Carbon Print Settings</h2>
-      <div class="tips-grid">
-        <div class="tip-card">
-          <h3>Lithophane</h3>
-          <p>
-            Filament: <code>White PLA / Translucent PETG</code><br>
-            Layer height: <code>0.1 mm</code><br>
-            Infill: <code>100%</code><br>
-            Print orientation: stand vertically on edge for best detail.<br>
-            Hold up to a window or LED panel to see the image.
-          </p>
-        </div>
-        <div class="tip-card">
-          <h3>Relief / Emboss</h3>
-          <p>
-            Filament: <code>Any PLA / PETG</code><br>
-            Layer height: <code>0.1–0.2 mm</code><br>
-            Infill: <code>15–20%</code><br>
-            Supports: <code>Off</code><br>
-            Works great for logos, portraits, and artwork.
-          </p>
-        </div>
-        <div class="tip-card">
-          <h3>Bambu Studio Setup</h3>
-          <p>
-            Open Bambu Studio → File → Import STL.<br>
-            Select <code>X1 Carbon</code> profile.<br>
-            Use <code>0.4 mm</code> nozzle for detail.<br>
-            Enable <code>AMS</code> for multi-color reliefs.
-          </p>
-        </div>
-        <div class="tip-card">
-          <h3>Best Photo Tips</h3>
-          <p>
-            High-contrast images work best.<br>
-            Portraits: use a plain background.<br>
-            For lithophanes, <code>B&amp;W photos</code> give the sharpest results.<br>
-            Larger prints (120–150 mm) show more detail.
-          </p>
-        </div>
+      <div class="canvas-spinner" id="canvas-spinner">
+        <div class="spinner-ring"></div>
+        <p>Generating model…</p>
       </div>
-    </div>
+    </section>
+
+    <!-- Right panel -->
+    <aside class="right-panel">
+      <h3>Download</h3>
+      <button class="btn-outline" id="download-btn" disabled>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path stroke-linecap="round" stroke-linejoin="round"
+            d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3"/>
+        </svg>
+        Download STL
+      </button>
+      <hr class="divider" />
+      <div class="file-meta" id="file-meta" style="display:none;">
+        <dl>
+          <dt>Format</dt><dd>Binary STL</dd>
+          <dt>File size</dt><dd id="meta-size">—</dd>
+          <dt>Triangles</dt><dd id="meta-tris">—</dd>
+          <dt>Print size</dt><dd id="meta-dims">—</dd>
+        </dl>
+      </div>
+      <hr class="divider" id="tips-divider" style="display:none;" />
+      <div class="tip-box" id="tip-box" style="display:none;">
+        <strong id="tip-title"></strong>
+        <span id="tip-body"></span>
+      </div>
+    </aside>
+
   </div>
+
+  <div id="toast"></div>
+
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+    }
+  }
+  </script>
+
+  <script type="module">
+    import * as THREE from 'three';
+    import { STLLoader }     from 'three/addons/loaders/STLLoader.js';
+    import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+    const canvas    = document.getElementById('three-canvas');
+    const canvasArea = document.getElementById('canvas-area');
+
+    const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+
+    const scene    = new THREE.Scene();
+    scene.background = new THREE.Color(0xd8e4dc);
+
+    const grid = new THREE.GridHelper(600, 24, 0xb8ccc0, 0xc4d8c8);
+    grid.position.y = -2;
+    scene.add(grid);
+
+    const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 5000);
+    camera.position.set(0, 120, 150);
+
+    scene.add(new THREE.AmbientLight(0xffffff, 0.55));
+    const key = new THREE.DirectionalLight(0xffffff, 0.9);
+    key.position.set(-2, 4, 3);
+    scene.add(key);
+    const fill = new THREE.DirectionalLight(0xffffff, 0.3);
+    fill.position.set(3, 0, -2);
+    scene.add(fill);
+
+    const controls = new OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.07;
+
+    function resize() {
+      const w = canvasArea.clientWidth, h = canvasArea.clientHeight;
+      renderer.setSize(w, h, false);
+      camera.aspect = w / h;
+      camera.updateProjectionMatrix();
+    }
+    resize();
+    new ResizeObserver(resize).observe(canvasArea);
+
+    (function animate() {
+      requestAnimationFrame(animate);
+      controls.update();
+      renderer.render(scene, camera);
+    })();
+
+    const loader   = new STLLoader();
+    const material = new THREE.MeshPhongMaterial({
+      color: 0xa8b4a8, specular: 0x445544, shininess: 40, side: THREE.DoubleSide
+    });
+    let mesh = null;
+
+    window._loadSTL = function(buf, wMm, hMm) {
+      if (mesh) { scene.remove(mesh); mesh.geometry.dispose(); }
+      const geo = loader.parse(buf);
+      geo.computeVertexNormals();
+      geo.center();
+      mesh = new THREE.Mesh(geo, material);
+      mesh.rotation.x = -Math.PI / 2;
+      scene.add(mesh);
+
+      const box    = new THREE.Box3().setFromObject(mesh);
+      const center = box.getCenter(new THREE.Vector3());
+      const size   = box.getSize(new THREE.Vector3());
+      const d      = Math.max(size.x, size.y, size.z);
+
+      camera.position.set(center.x, center.y + d * 0.85, center.z + d * 1.05);
+      camera.lookAt(center);
+      controls.target.copy(center);
+      controls.update();
+      grid.position.y = box.min.y - 2;
+
+      document.getElementById('canvas-placeholder').style.display = 'none';
+      document.getElementById('canvas-info').style.display = 'block';
+      document.getElementById('print-size').textContent =
+        `${Math.round(wMm)} × ${Math.round(hMm)} mm`;
+    };
+
+    window._resetCam = function() {
+      if (!mesh) return;
+      const box    = new THREE.Box3().setFromObject(mesh);
+      const center = box.getCenter(new THREE.Vector3());
+      const size   = box.getSize(new THREE.Vector3());
+      const d      = Math.max(size.x, size.y, size.z);
+      camera.position.set(center.x, center.y + d * 0.85, center.z + d * 1.05);
+      camera.lookAt(center);
+      controls.target.copy(center);
+      controls.update();
+    };
+
+    document.getElementById('zoom-in').addEventListener('click',  () => { camera.position.multiplyScalar(0.82); controls.update(); });
+    document.getElementById('zoom-out').addEventListener('click', () => { camera.position.multiplyScalar(1.22); controls.update(); });
+    document.getElementById('reset-cam').addEventListener('click', () => window._resetCam());
+  </script>
 
   <script>
     let currentFile = null;
-    let currentMode = 'lithophane';
-    let smoothOn = true;
-    let aspectRatio = 1;
+    let stlBlob     = null;
+    let stlFilename = 'model.stl';
+    let currentMode = 'relief';
+    let currentRes  = 150;
 
-    // --- Upload / drag-drop ---
-    const dropZone = document.getElementById('drop-zone');
+    const TIPS = {
+      relief:     { title: 'Relief — Bambu Tips',     body: 'Any PLA/PETG. 0.1–0.2 mm layers, 15% infill, no supports.' },
+      emboss:     { title: 'Emboss — Bambu Tips',     body: 'Great with AMS multi-color. 0.2 mm layers, 15% infill.' },
+      lithophane: { title: 'Lithophane — Bambu Tips', body: 'White/translucent PLA, 0.1 mm layers, 100% infill. Print vertically for best detail.' },
+    };
+
+    // Upload
+    const dropZone  = document.getElementById('drop-zone');
     const fileInput = document.getElementById('file-input');
-    const previewWrap = document.getElementById('preview-wrap');
-    const previewImg = document.getElementById('preview-img');
-    const convertBtn = document.getElementById('convert-btn');
-
     dropZone.addEventListener('click', () => fileInput.click());
-    document.getElementById('replace-btn').addEventListener('click', () => fileInput.click());
-
-    dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('dragover'); });
+    document.getElementById('thumb-replace').addEventListener('click', () => fileInput.click());
+    dropZone.addEventListener('dragover',  e => { e.preventDefault(); dropZone.classList.add('dragover'); });
     dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
     dropZone.addEventListener('drop', e => {
-      e.preventDefault();
-      dropZone.classList.remove('dragover');
-      const file = e.dataTransfer.files[0];
-      if (file && file.type.startsWith('image/')) loadFile(file);
+      e.preventDefault(); dropZone.classList.remove('dragover');
+      const f = e.dataTransfer.files[0];
+      if (f && f.type.startsWith('image/')) loadFile(f);
     });
-
-    fileInput.addEventListener('change', () => {
-      if (fileInput.files[0]) loadFile(fileInput.files[0]);
-    });
+    fileInput.addEventListener('change', () => { if (fileInput.files[0]) loadFile(fileInput.files[0]); });
 
     function loadFile(file) {
       currentFile = file;
       const reader = new FileReader();
       reader.onload = e => {
-        previewImg.src = e.target.result;
-        previewImg.onload = () => {
-          aspectRatio = previewImg.naturalHeight / previewImg.naturalWidth;
-          updateSizePreview();
-        };
-        dropZone.style.display = 'none';
-        previewWrap.style.display = 'block';
-        convertBtn.disabled = false;
-        setStatus('');
+        const img = document.getElementById('thumb-img');
+        img.src = e.target.result;
       };
       reader.readAsDataURL(file);
+      goToStep(2);
     }
 
-    // --- Mode tabs ---
-    document.querySelectorAll('.tab').forEach(tab => {
-      tab.addEventListener('click', () => {
-        document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-        document.querySelectorAll('.mode-panel').forEach(p => p.classList.remove('active'));
-        tab.classList.add('active');
-        currentMode = tab.dataset.mode;
-        document.getElementById('panel-' + currentMode).classList.add('active');
+    // Steps
+    function goToStep(n) {
+      document.getElementById('step1-content').style.display = n === 1 ? 'block' : 'none';
+      document.getElementById('step2-content').style.display = n >= 2 ? 'flex' : 'none';
+      [1,2,3].forEach(i => {
+        const el = document.getElementById(`step-ind-${i}`);
+        el.classList.remove('active','done');
+        if (i < n) el.classList.add('done');
+        if (i === n) el.classList.add('active');
+      });
+      document.getElementById('line-1').classList.toggle('done', n > 1);
+      document.getElementById('line-2').classList.toggle('done', n > 2);
+    }
+
+    // Sliders
+    document.getElementById('depth').addEventListener('input', function() {
+      document.getElementById('depth-val').textContent = this.value + ' mm';
+    });
+    document.getElementById('width-mm').addEventListener('input', function() {
+      document.getElementById('width-val').textContent = this.value + ' mm';
+    });
+
+    // Detail buttons
+    document.querySelectorAll('.detail-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.detail-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        currentRes = parseInt(btn.dataset.res);
       });
     });
 
-    // --- Smooth toggle ---
-    const smoothToggle = document.getElementById('smooth-toggle');
-    smoothToggle.addEventListener('click', () => {
-      smoothOn = !smoothOn;
-      smoothToggle.classList.toggle('on', smoothOn);
+    // Effect pills
+    document.querySelectorAll('.pill').forEach(pill => {
+      pill.addEventListener('click', () => {
+        document.querySelectorAll('.pill').forEach(p => p.classList.remove('active'));
+        pill.classList.add('active');
+        currentMode = pill.dataset.mode;
+      });
     });
 
-    // --- Range display helpers ---
-    function bindRange(id, displayId, suffix) {
-      const el = document.getElementById(id);
-      const disp = document.getElementById(displayId);
-      const update = () => { disp.textContent = el.value + ' ' + suffix; };
-      el.addEventListener('input', update);
-      update();
-    }
-
-    bindRange('resolution', 'res-val', 'px');
-    bindRange('min-thickness', 'min-t-val', 'mm');
-    bindRange('max-thickness', 'max-t-val', 'mm');
-    bindRange('base-mm', 'base-val', 'mm');
-    bindRange('relief-height', 'relief-val', 'mm');
-    bindRange('base-mm-e', 'base-e-val', 'mm');
-    bindRange('emboss-height', 'emboss-val', 'mm');
-
-    const widthSlider = document.getElementById('width-mm');
-    widthSlider.addEventListener('input', () => {
-      document.getElementById('width-val').textContent = widthSlider.value + ' mm';
-      updateSizePreview();
-    });
-
-    function updateSizePreview() {
-      const w = parseFloat(widthSlider.value);
-      const h = (w * aspectRatio).toFixed(0);
-      document.getElementById('size-preview').textContent =
-        `approx. ${w} × ${h} mm`;
-    }
-
-    // --- Convert ---
-    convertBtn.addEventListener('click', async () => {
+    // Generate
+    document.getElementById('generate-btn').addEventListener('click', async () => {
       if (!currentFile) return;
+      const spinner = document.getElementById('canvas-spinner');
+      const genBtn  = document.getElementById('generate-btn');
+      spinner.classList.add('show');
+      genBtn.disabled = true;
 
-      setStatus('loading', 'Converting…');
-      convertBtn.disabled = true;
+      const img    = document.getElementById('thumb-img');
+      const aspect = (img.naturalHeight || 1) / (img.naturalWidth || 1);
+      const wMm    = parseFloat(document.getElementById('width-mm').value);
+      const hMm    = wMm * aspect;
+      const depth  = parseFloat(document.getElementById('depth').value);
+      const isLitho = currentMode === 'lithophane';
 
       const form = new FormData();
-      form.append('file', currentFile);
-      form.append('mode', currentMode);
-      form.append('width_mm', document.getElementById('width-mm').value);
-      form.append('resolution', document.getElementById('resolution').value);
-      form.append('smooth', smoothOn ? 'true' : 'false');
-
-      if (currentMode === 'lithophane') {
-        form.append('min_thickness', document.getElementById('min-thickness').value);
-        form.append('max_thickness', document.getElementById('max-thickness').value);
-      } else if (currentMode === 'relief') {
-        form.append('base_mm', document.getElementById('base-mm').value);
-        form.append('relief_height_mm', document.getElementById('relief-height').value);
+      form.append('file',       currentFile);
+      form.append('mode',       currentMode);
+      form.append('base_shape', document.getElementById('base-type').value);
+      form.append('width_mm',   wMm);
+      form.append('resolution', currentRes);
+      form.append('smooth',     'true');
+      if (isLitho) {
+        form.append('min_thickness', '0.8');
+        form.append('max_thickness', depth);
       } else {
-        form.append('base_mm', document.getElementById('base-mm-e').value);
-        form.append('relief_height_mm', document.getElementById('emboss-height').value);
+        form.append('base_mm',          '1.0');
+        form.append('relief_height_mm', depth);
       }
 
       try {
         const resp = await fetch('/convert', { method: 'POST', body: form });
-        if (!resp.ok) {
-          const text = await resp.text();
-          throw new Error(text || resp.statusText);
-        }
+        if (!resp.ok) { showToast('Error: ' + resp.statusText); return; }
 
-        const blob = await resp.blob();
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-
-        // Get filename from Content-Disposition
+        const buf = await resp.arrayBuffer();
+        stlBlob = new Blob([buf], { type: 'application/octet-stream' });
         const cd = resp.headers.get('Content-Disposition') || '';
-        const match = cd.match(/filename="([^"]+)"/);
-        a.download = match ? match[1] : 'model.stl';
-        a.href = url;
-        a.click();
-        URL.revokeObjectURL(url);
+        const m  = cd.match(/filename="([^"]+)"/);
+        stlFilename = m ? m[1] : 'model.stl';
 
-        const sizeMb = (blob.size / 1048576).toFixed(1);
-        setStatus('success', `STL downloaded (${sizeMb} MB) — open in Bambu Studio!`);
-      } catch (err) {
-        setStatus('error', 'Error: ' + err.message);
+        const nTris = Math.round((buf.byteLength - 84) / 50);
+        const sizeMb = (buf.byteLength / 1048576).toFixed(1);
+
+        window._loadSTL(buf, wMm, hMm);
+
+        document.getElementById('meta-size').textContent  = sizeMb + ' MB';
+        document.getElementById('meta-tris').textContent  = nTris.toLocaleString();
+        document.getElementById('meta-dims').textContent  = `${Math.round(wMm)} × ${Math.round(hMm)} mm`;
+        document.getElementById('file-meta').style.display = 'block';
+        document.getElementById('tips-divider').style.display = 'block';
+
+        const tip = TIPS[currentMode];
+        document.getElementById('tip-title').textContent = tip.title;
+        document.getElementById('tip-body').textContent  = tip.body;
+        document.getElementById('tip-box').style.display = 'block';
+
+        document.getElementById('download-btn').disabled = false;
+        goToStep(3);
+      } catch(err) {
+        showToast('Error: ' + err.message);
       } finally {
-        convertBtn.disabled = false;
+        spinner.classList.remove('show');
+        genBtn.disabled = false;
       }
     });
 
-    function setStatus(type, msg) {
-      const el = document.getElementById('status');
-      if (!type) { el.style.display = 'none'; return; }
-      el.style.display = 'block';
-      el.className = type;
-      if (type === 'loading') {
-        el.innerHTML = `<span class="spinner"></span>${msg}`;
-      } else {
-        el.textContent = msg;
-      }
+    // Download
+    document.getElementById('download-btn').addEventListener('click', () => {
+      if (!stlBlob) return;
+      const url = URL.createObjectURL(stlBlob);
+      const a   = Object.assign(document.createElement('a'), { href: url, download: stlFilename });
+      a.click();
+      URL.revokeObjectURL(url);
+    });
+
+    function showToast(msg) {
+      const t = document.getElementById('toast');
+      t.textContent = msg; t.style.display = 'block';
+      setTimeout(() => t.style.display = 'none', 4000);
     }
   </script>
 </body>

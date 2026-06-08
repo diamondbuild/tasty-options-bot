@@ -17,7 +17,8 @@ from .stl_writer import triangles_to_stl_bytes
 
 @dataclass
 class ConvertSettings:
-    mode: str = "lithophane"        # lithophane | relief | emboss
+    mode: str = "relief"            # lithophane | relief | emboss
+    base_shape: str = "rectangle"   # rectangle | circle
     width_mm: float = 100.0         # physical width of the print
     resolution: int = 150           # pixel width used for the mesh
     # lithophane
@@ -25,7 +26,7 @@ class ConvertSettings:
     max_thickness_mm: float = 3.0   # thickest point (dark pixels)
     # relief / emboss
     base_mm: float = 1.0            # flat base height
-    relief_height_mm: float = 3.0   # max raised height above base
+    relief_height_mm: float = 3.5   # max raised height above base
     smooth: bool = True             # Gaussian blur before meshing
 
 
@@ -126,12 +127,28 @@ def _build_mesh(z_grid: np.ndarray, x_scale: float, y_scale: float) -> np.ndarra
 # Public converters
 # ---------------------------------------------------------------------------
 
+def _apply_circle_mask(pixels: np.ndarray, fill_value: float) -> np.ndarray:
+    """Zero-out pixels outside the inscribed circle, replacing with fill_value."""
+    rows, cols = pixels.shape
+    cy, cx = (rows - 1) / 2.0, (cols - 1) / 2.0
+    r = min(cy, cx)
+    y_idx = np.arange(rows, dtype=np.float32)[:, np.newaxis]
+    x_idx = np.arange(cols, dtype=np.float32)[np.newaxis, :]
+    inside = ((y_idx - cy) ** 2 + (x_idx - cx) ** 2) <= r ** 2
+    return np.where(inside, pixels, fill_value)
+
+
 def convert_image(image_data: bytes, settings: ConvertSettings) -> bytes:
     """Convert image bytes to binary STL bytes."""
     pixels, aspect = _load_grayscale(image_data, settings.resolution)
 
     if settings.smooth:
         pixels = _smooth(pixels)
+
+    if settings.base_shape == "circle":
+        # Outside the circle: flat base level
+        fill = 1.0 if settings.mode == "lithophane" else 0.0
+        pixels = _apply_circle_mask(pixels, fill)
 
     if settings.mode == "lithophane":
         # Invert: bright → thin (more translucent), dark → thick

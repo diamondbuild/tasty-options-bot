@@ -27,13 +27,14 @@ async def index() -> HTMLResponse:
 @app.post("/convert")
 async def convert(
     file: UploadFile = File(...),
-    mode: str = Form("lithophane"),
+    mode: str = Form("relief"),
+    base_shape: str = Form("rectangle"),
     width_mm: float = Form(100.0),
     resolution: int = Form(150),
     min_thickness: float = Form(0.8),
     max_thickness: float = Form(3.0),
     base_mm: float = Form(1.0),
-    relief_height_mm: float = Form(3.0),
+    relief_height_mm: float = Form(3.5),
     smooth: bool = Form(True),
 ) -> StreamingResponse:
     if file.content_type not in ALLOWED_TYPES:
@@ -53,9 +54,12 @@ async def convert(
 
     if mode not in ("lithophane", "relief", "emboss"):
         raise HTTPException(400, f"Unknown mode: {mode!r}")
+    if base_shape not in ("rectangle", "circle"):
+        raise HTTPException(400, f"Unknown base_shape: {base_shape!r}")
 
     settings = ConvertSettings(
         mode=mode,
+        base_shape=base_shape,
         width_mm=width_mm,
         resolution=resolution,
         min_thickness_mm=min_thickness,
