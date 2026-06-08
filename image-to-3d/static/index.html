@@ -238,19 +238,43 @@
 
     .canvas-spinner {
       position: absolute; inset: 0;
-      background: rgba(216,228,220,.75);
+      background: rgba(216,228,220,.82);
       display: none; align-items: center; justify-content: center;
-      flex-direction: column; gap: .75rem;
+      flex-direction: column; gap: 1.1rem;
     }
     .canvas-spinner.show { display: flex; }
     .spinner-ring {
-      width: 44px; height: 44px;
-      border: 3px solid rgba(26,107,85,.2);
+      width: 48px; height: 48px;
+      border: 3px solid rgba(26,107,85,.18);
       border-top-color: var(--teal-dark);
       border-radius: 50%; animation: spin .8s linear infinite;
     }
-    .canvas-spinner p { font-size: .82rem; color: var(--teal-dark); font-weight: 500; }
     @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* Progress bar inside spinner */
+    .progress-wrap {
+      width: 220px;
+      display: flex; flex-direction: column; gap: .45rem;
+    }
+    .progress-track {
+      width: 100%; height: 6px;
+      background: rgba(26,107,85,.15);
+      border-radius: 3px; overflow: hidden;
+    }
+    .progress-fill {
+      height: 100%; width: 0%;
+      background: var(--teal-dark);
+      border-radius: 3px;
+      transition: width .35s ease;
+    }
+    .progress-label {
+      font-size: .78rem; color: var(--teal-dark);
+      font-weight: 500; text-align: center;
+    }
+    .progress-pct {
+      font-size: .72rem; color: var(--muted);
+      text-align: center;
+    }
 
     /* ── Right panel ── */
     .right-panel {
@@ -412,7 +436,13 @@
 
       <div class="canvas-spinner" id="canvas-spinner">
         <div class="spinner-ring"></div>
-        <p>Generating model…</p>
+        <div class="progress-wrap">
+          <div class="progress-label" id="progress-label">Uploading image...</div>
+          <div class="progress-track">
+            <div class="progress-fill" id="progress-fill"></div>
+          </div>
+          <div class="progress-pct" id="progress-pct">0%</div>
+        </div>
       </div>
     </section>
 
@@ -630,6 +660,42 @@
       });
     });
 
+    // Progress bar helpers
+    const STEPS = [
+      { pct: 10, label: 'Uploading image...' },
+      { pct: 35, label: 'Processing pixels...' },
+      { pct: 65, label: 'Building 3D mesh...' },
+      { pct: 88, label: 'Finalizing model...' },
+    ];
+    let progressTimer = null;
+    let progressStep  = 0;
+
+    function startProgress() {
+      progressStep = 0;
+      setProgress(0, 'Uploading image...');
+      progressTimer = setInterval(() => {
+        progressStep = Math.min(progressStep + 1, STEPS.length - 1);
+        const s = STEPS[progressStep];
+        setProgress(s.pct, s.label);
+      }, 900);
+    }
+
+    function finishProgress(label) {
+      clearInterval(progressTimer);
+      setProgress(100, label || 'Done!');
+    }
+
+    function resetProgress() {
+      clearInterval(progressTimer);
+      setProgress(0, '');
+    }
+
+    function setProgress(pct, label) {
+      document.getElementById('progress-fill').style.width = pct + '%';
+      document.getElementById('progress-label').textContent = label;
+      document.getElementById('progress-pct').textContent   = Math.round(pct) + '%';
+    }
+
     // Generate
     document.getElementById('generate-btn').addEventListener('click', async () => {
       if (!currentFile) return;
@@ -637,6 +703,7 @@
       const genBtn  = document.getElementById('generate-btn');
       spinner.classList.add('show');
       genBtn.disabled = true;
+      startProgress();
 
       const img    = document.getElementById('thumb-img');
       const aspect = (img.naturalHeight || 1) / (img.naturalWidth || 1);
@@ -664,20 +731,21 @@
         const resp = await fetch('/convert', { method: 'POST', body: form });
         if (!resp.ok) { showToast('Error: ' + resp.statusText); return; }
 
+        finishProgress('Loading preview...');
         const buf = await resp.arrayBuffer();
         stlBlob = new Blob([buf], { type: 'application/octet-stream' });
         const cd = resp.headers.get('Content-Disposition') || '';
         const m  = cd.match(/filename="([^"]+)"/);
         stlFilename = m ? m[1] : 'model.stl';
 
-        const nTris = Math.round((buf.byteLength - 84) / 50);
+        const nTris  = Math.round((buf.byteLength - 84) / 50);
         const sizeMb = (buf.byteLength / 1048576).toFixed(1);
 
         window._loadSTL(buf, wMm, hMm);
 
-        document.getElementById('meta-size').textContent  = sizeMb + ' MB';
-        document.getElementById('meta-tris').textContent  = nTris.toLocaleString();
-        document.getElementById('meta-dims').textContent  = `${Math.round(wMm)} × ${Math.round(hMm)} mm`;
+        document.getElementById('meta-size').textContent   = sizeMb + ' MB';
+        document.getElementById('meta-tris').textContent   = nTris.toLocaleString();
+        document.getElementById('meta-dims').textContent   = `${Math.round(wMm)} x ${Math.round(hMm)} mm`;
         document.getElementById('file-meta').style.display = 'block';
         document.getElementById('tips-divider').style.display = 'block';
 
@@ -691,8 +759,11 @@
       } catch(err) {
         showToast('Error: ' + err.message);
       } finally {
-        spinner.classList.remove('show');
-        genBtn.disabled = false;
+        setTimeout(() => {
+          spinner.classList.remove('show');
+          resetProgress();
+          genBtn.disabled = false;
+        }, 400);
       }
     });
 

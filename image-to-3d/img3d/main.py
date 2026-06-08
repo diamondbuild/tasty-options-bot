@@ -20,8 +20,8 @@ MAX_SIZE_BYTES = 20 * 1024 * 1024  # 20 MB
 
 @app.get("/", response_class=HTMLResponse)
 async def index() -> HTMLResponse:
-    html = (STATIC_DIR / "index.html").read_text()
-    return HTMLResponse(html)
+    html = (STATIC_DIR / "index.html").read_text(encoding="utf-8")
+    return HTMLResponse(html, media_type="text/html; charset=utf-8")
 
 
 @app.post("/convert")
