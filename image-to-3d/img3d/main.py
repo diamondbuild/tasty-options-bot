@@ -36,6 +36,7 @@ async def convert(
     base_mm: float = Form(1.0),
     relief_height_mm: float = Form(3.5),
     smooth: bool = Form(True),
+    remove_bg: bool = Form(True),
 ) -> StreamingResponse:
     if file.content_type not in ALLOWED_TYPES:
         raise HTTPException(400, f"Unsupported file type: {file.content_type}")
@@ -62,6 +63,7 @@ async def convert(
         base_shape=base_shape,
         width_mm=width_mm,
         resolution=resolution,
+        remove_bg=remove_bg,
         min_thickness_mm=min_thickness,
         max_thickness_mm=max_thickness,
         base_mm=base_mm,

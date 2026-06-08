@@ -307,6 +307,20 @@
     }
     .tip-box strong { color: var(--teal-dark); display: block; margin-bottom: .3rem; }
 
+    /* Remove-bg toggle pill */
+    .toggle-pill {
+      width: 40px; height: 22px;
+      border-radius: 11px; background: #d0d8d2;
+      position: relative; cursor: pointer; transition: background .2s; flex-shrink: 0;
+    }
+    .toggle-pill.on { background: var(--teal-dark); }
+    .toggle-pill::after {
+      content: ''; position: absolute;
+      width: 16px; height: 16px; border-radius: 50%;
+      background: #fff; top: 3px; left: 3px; transition: left .2s;
+    }
+    .toggle-pill.on::after { left: 21px; }
+
     /* Toast */
     #toast {
       position: fixed; bottom: 1.5rem; left: 50%;
@@ -401,6 +415,11 @@
             <div class="pill" data-mode="emboss">Emboss</div>
             <div class="pill" data-mode="lithophane">Lithophane</div>
           </div>
+        </div>
+
+        <div style="display:flex;align-items:center;justify-content:space-between;">
+          <span style="font-size:.78rem;color:var(--muted);">Remove Background</span>
+          <div class="toggle-pill on" id="remove-bg-toggle" title="Auto-detect and remove background"></div>
         </div>
 
         <button class="btn-primary" id="generate-btn">Generate 3D Preview</button>
@@ -583,11 +602,18 @@
   </script>
 
   <script>
-    let currentFile = null;
-    let stlBlob     = null;
-    let stlFilename = 'model.stl';
-    let currentMode = 'relief';
-    let currentRes  = 150;
+    let currentFile  = null;
+    let stlBlob      = null;
+    let stlFilename  = 'model.stl';
+    let currentMode  = 'relief';
+    let currentRes   = 150;
+    let removeBg     = true;
+
+    const removeBgToggle = document.getElementById('remove-bg-toggle');
+    removeBgToggle.addEventListener('click', () => {
+      removeBg = !removeBg;
+      removeBgToggle.classList.toggle('on', removeBg);
+    });
 
     const TIPS = {
       relief:     { title: 'Relief — Bambu Tips',     body: 'Any PLA/PETG. 0.1–0.2 mm layers, 15% infill, no supports.' },
@@ -719,6 +745,7 @@
       form.append('width_mm',   wMm);
       form.append('resolution', currentRes);
       form.append('smooth',     'true');
+      form.append('remove_bg',  removeBg ? 'true' : 'false');
       if (isLitho) {
         form.append('min_thickness', '0.8');
         form.append('max_thickness', depth);
