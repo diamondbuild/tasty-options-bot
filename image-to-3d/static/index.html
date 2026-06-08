@@ -307,6 +307,22 @@
     }
     .tip-box strong { color: var(--teal-dark); display: block; margin-bottom: .3rem; }
 
+    /* Unit toggle button */
+    .unit-btn {
+      margin-left: auto;
+      padding: .15rem .5rem;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      background: var(--bg);
+      color: var(--teal-dark);
+      font-size: .7rem;
+      font-weight: 600;
+      cursor: pointer;
+      letter-spacing: .03em;
+      transition: background .15s;
+    }
+    .unit-btn:hover { background: var(--teal-light); }
+
     /* Remove-bg toggle pill */
     .toggle-pill {
       width: 40px; height: 22px;
@@ -382,7 +398,10 @@
         </div>
 
         <div>
-          <div class="field-label">Extrusion Depth <span id="depth-val">3.5 mm</span></div>
+          <div class="field-label" style="align-items:center;">
+            Extrusion Depth <span id="depth-val">3.5 mm</span>
+            <button class="unit-btn" id="unit-toggle" title="Switch units">mm / in</button>
+          </div>
           <input type="range" id="depth" min="0.5" max="8" step="0.25" value="3.5" />
         </div>
 
@@ -400,6 +419,7 @@
           <select id="base-type">
             <option value="rectangle">Flat Rectangle</option>
             <option value="circle">Flat Circle</option>
+            <option value="none">No Base</option>
           </select>
         </div>
 
@@ -660,12 +680,31 @@
       document.getElementById('line-2').classList.toggle('done', n > 2);
     }
 
-    // Sliders
-    document.getElementById('depth').addEventListener('input', function() {
-      document.getElementById('depth-val').textContent = this.value + ' mm';
+    // Unit conversion (sliders always store mm internally)
+    const MM_PER_IN = 25.4;
+    let useInches = false;
+
+    function fmtDepth(mm)  { return useInches ? (mm / MM_PER_IN).toFixed(2) + ' in' : parseFloat(mm).toFixed(2) + ' mm'; }
+    function fmtWidth(mm)  { return useInches ? (mm / MM_PER_IN).toFixed(1) + ' in' : Math.round(mm) + ' mm'; }
+
+    const depthSliderEl = document.getElementById('depth');
+    const widthSliderEl = document.getElementById('width-mm');
+
+    depthSliderEl.addEventListener('input', function() {
+      document.getElementById('depth-val').textContent = fmtDepth(this.value);
     });
-    document.getElementById('width-mm').addEventListener('input', function() {
-      document.getElementById('width-val').textContent = this.value + ' mm';
+    widthSliderEl.addEventListener('input', function() {
+      document.getElementById('width-val').textContent = fmtWidth(this.value);
+    });
+
+    document.getElementById('unit-toggle').addEventListener('click', () => {
+      useInches = !useInches;
+      const btn = document.getElementById('unit-toggle');
+      btn.textContent = useInches ? 'in / mm' : 'mm / in';
+      btn.style.background = useInches ? 'var(--teal-light)' : '';
+      // Refresh displayed values without moving sliders
+      document.getElementById('depth-val').textContent = fmtDepth(depthSliderEl.value);
+      document.getElementById('width-val').textContent = fmtWidth(widthSliderEl.value);
     });
 
     // Detail buttons

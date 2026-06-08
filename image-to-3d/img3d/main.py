@@ -50,13 +50,19 @@ async def convert(
     resolution = max(50, min(400, resolution))
     min_thickness = max(0.4, min(5.0, min_thickness))
     max_thickness = max(min_thickness + 0.4, min(10.0, max_thickness))
-    base_mm = max(0.4, min(5.0, base_mm))
-    relief_height_mm = max(0.4, min(10.0, relief_height_mm))
+    relief_height_mm = max(0.4, min(25.0, relief_height_mm))
 
     if mode not in ("lithophane", "relief", "emboss"):
         raise HTTPException(400, f"Unknown mode: {mode!r}")
-    if base_shape not in ("rectangle", "circle"):
+    if base_shape not in ("rectangle", "circle", "none"):
         raise HTTPException(400, f"Unknown base_shape: {base_shape!r}")
+
+    # "none" = no visible base — use minimum printable thickness
+    if base_shape == "none":
+        base_mm = 0.4
+        base_shape = "rectangle"
+    else:
+        base_mm = max(0.4, min(5.0, base_mm))
 
     settings = ConvertSettings(
         mode=mode,
