@@ -1885,5 +1885,247 @@ def report(
     console.print("No orders were placed; report is read-only.")
 
 
+@app.command("yolo-scan")
+def yolo_scan(
+    symbols: list[str] | None = typer.Option(None, "--symbol", "-s", help="Symbol to scan. Repeat to override config/yolo.yaml universe."),
+    option_type: str = typer.Option("call", help="Option type to scan: call or put."),
+    budget: float | None = typer.Option(None, help="Override budget_per_play for sizing."),
+    dte_min: int | None = typer.Option(None, help="Override minimum DTE."),
+    dte_max: int | None = typer.Option(None, help="Override maximum DTE."),
+    delta_min: float | None = typer.Option(None, help="Override minimum absolute delta."),
+    delta_max: float | None = typer.Option(None, help="Override maximum absolute delta."),
+    max_results: int = typer.Option(5, help="Maximum candidates to display per symbol."),
+    ticket_preview: bool = typer.Option(True, help="Show non-submitting ticket previews for top candidates."),
+    yolo_config_path: Path = typer.Option(Path("config/yolo.yaml"), help="YOLO config YAML path."),
+    journal_path: Path = typer.Option(Path("data/journal.jsonl"), help="Audit journal JSONL path."),
+) -> None:
+    """Read-only YOLO long-option scan with preview-only tickets. Never submits orders."""
+    from dataclasses import replace as dataclass_replace
+
+    from tasty_options_bot.yolo.scanner import build_yolo_candidates
+    from tasty_options_bot.yolo.settings import load_yolo_settings
+    from tasty_options_bot.yolo.tickets import (
+        build_yolo_opening_payload_preview,
+        build_yolo_opening_ticket,
+    )
+
+    requested_type = option_type.lower().strip()
+    if requested_type not in {"call", "put"}:
+        raise typer.BadParameter("--option-type must be call or put")
+
+    settings = load_yolo_settings(yolo_config_path)
+    scanner_config = settings.scanner
+    overrides = {
+        "budget_per_play": budget,
+        "dte_min": dte_min,
+        "dte_max": dte_max,
+        "delta_min": delta_min,
+        "delta_max": delta_max,
+    }
+    applied = {key: value for key, value in overrides.items() if value is not None}
+    if applied:
+        scanner_config = dataclass_replace(scanner_config, **applied)
+
+    selected_symbols = [symbol.upper().strip() for symbol in symbols or [] if symbol.strip()]
+    if not selected_symbols:
+        selected_symbols = scanner_config.universe
+    if not selected_symbols:
+        console.print("No YOLO universe symbols configured; pass --symbol or set universe in config/yolo.yaml.")
+        return
+
+    client = build_tastytrade_client()
+    authenticate_client(client)
+    journal = Journal(journal_path)
+    now = datetime.now(timezone.utc)
+
+    console.print(f"YOLO dry-run scan ({requested_type}s): {', '.join(selected_symbols)}")
+    console.print(
+        f"Filters: DTE {scanner_config.dte_min}-{scanner_config.dte_max}, "
+        f"|delta| {scanner_config.delta_min}-{scanner_config.delta_max}, "
+        f"ask <= ${scanner_config.max_ask:.2f}, budget ${scanner_config.budget_per_play:,.2f}/play"
+    )
+
+    for selected_symbol in selected_symbols:
+        console.rule(f"{selected_symbol} YOLO scan")
+        chain_items = client.get_nested_option_chain(selected_symbol)
+        contracts = parse_nested_option_chain(
+            chain_items,
+            option_type=requested_type,
+            dte_min=scanner_config.dte_min,
+            dte_max=scanner_config.dte_max,
+        )
+        if not contracts:
+            console.print("No option contracts in DTE band.")
+            continue
+        market_items = client.get_equity_option_market_data(
+            [contract.option_symbol for contract in contracts]
+        )
+        quotes = parse_equity_option_market_data(market_items, contracts)
+        candidates = build_yolo_candidates(quotes=quotes, now=now, config=scanner_config)
+        journal.append(
+            JournalEvent(
+                event_type="yolo_scan",
+                decision="candidates_found" if candidates else "no_candidates",
+                symbol=selected_symbol,
+                reason=f"{len(candidates)} candidates from {len(quotes)} quotes",
+                payload={
+                    "option_type": requested_type,
+                    "quotes": len(quotes),
+                    "candidates": len(candidates),
+                },
+            )
+        )
+        if not candidates:
+            console.print(f"No candidates passed filters ({len(quotes)} quotes checked).")
+            continue
+
+        table = Table(title=f"{selected_symbol} YOLO Candidates (read-only)")
+        table.add_column("Strategy")
+        table.add_column("Option Symbol")
+        table.add_column("Exp / DTE")
+        table.add_column("Delta")
+        table.add_column("Bid/Ask")
+        table.add_column("Qty")
+        table.add_column("Cost")
+        table.add_column("Breakeven")
+        for candidate in candidates[:max_results]:
+            table.add_row(
+                candidate.strategy_label,
+                candidate.option_symbol,
+                f"{candidate.expiration.isoformat()} / {candidate.dte}",
+                f"{candidate.delta:+.2f}",
+                f"${candidate.bid:.2f}/${candidate.ask:.2f}",
+                str(candidate.contracts),
+                f"${candidate.total_cost:,.2f}",
+                f"${candidate.breakeven:.2f}",
+            )
+        console.print(table)
+
+        if ticket_preview:
+            best = candidates[0]
+            ticket = build_yolo_opening_ticket(best)
+            payload = build_yolo_opening_payload_preview(ticket)
+            console.print("Ticket preview (NOT submitted):")
+            console.print(f"  Strategy: {ticket.strategy}")
+            console.print(f"  Leg: buy_to_open {ticket.legs[0].quantity}x {ticket.legs[0].option_symbol}")
+            console.print(f"  Limit: ${ticket.limit_price:.2f} debit | Total: ${ticket.total_cost:,.2f} | Breakeven: ${ticket.breakeven:.2f}")
+            console.print(f"  Payload preview: {payload}")
+            console.print(f"  Safety: {ticket.safety_status}")
+
+    console.print("YOLO scan complete. No orders were placed; scan is read-only.")
+
+
+@app.command("yolo-positions")
+def yolo_positions(
+    yolo_config_path: Path = typer.Option(Path("config/yolo.yaml"), help="YOLO config YAML path."),
+    journal_path: Path = typer.Option(Path("data/journal.jsonl"), help="Audit journal JSONL path."),
+) -> None:
+    """Evaluate exit rules for all open long-option positions. Read-only, never submits orders."""
+    import httpx as _httpx
+
+    from tasty_options_bot.yolo.exit_engine import evaluate_yolo_position
+    from tasty_options_bot.yolo.models import YoloPosition
+    from tasty_options_bot.yolo.settings import load_yolo_settings, parse_occ_option_symbol
+
+    settings = load_yolo_settings(yolo_config_path)
+    client = build_tastytrade_client()
+    authenticate_client(client)
+    journal = Journal(journal_path)
+    today = datetime.now(timezone.utc).date()
+
+    raw_positions = client.get_positions()
+    long_options = []
+    for raw in raw_positions:
+        if str(raw.get("instrument-type", "")) != "Equity Option":
+            continue
+        if str(raw.get("quantity-direction", "Long")).lower() != "long":
+            continue
+        parsed = parse_occ_option_symbol(str(raw.get("symbol", "")))
+        if parsed is None:
+            continue
+        long_options.append((raw, parsed))
+
+    if not long_options:
+        console.print("No open long-option positions found at broker.")
+        return
+
+    for raw, parsed in long_options:
+        symbol = str(raw["symbol"])
+        quantity = int(float(raw.get("quantity", 0)))
+        entry_price = float(raw.get("average-open-price", 0) or 0)
+
+        market_items = client.get_equity_option_market_data([symbol])
+        quote = {item["symbol"]: item for item in market_items}.get(symbol, {})
+        bid = float(quote.get("bid", 0) or 0)
+        ask = float(quote.get("ask", 0) or 0)
+        mark = float(quote.get("mark", 0) or 0)
+
+        underlying_mark: float | None = None
+        try:
+            response = _httpx.get(
+                f"{client.config.base_url}/market-data/by-type",
+                params={"equity": parsed.underlying_symbol},
+                headers=client.authorization_headers,
+                timeout=15,
+            )
+            items = response.json().get("data", {}).get("items", [])
+            if items:
+                underlying_mark = float(items[0].get("mark") or items[0].get("last") or 0) or None
+        except Exception:
+            underlying_mark = None
+
+        position = YoloPosition(
+            option_symbol=symbol,
+            underlying_symbol=parsed.underlying_symbol,
+            option_type=parsed.option_type,
+            strike=parsed.strike,
+            expiration=parsed.expiration,
+            quantity=quantity,
+            entry_price=entry_price,
+            bid=bid,
+            ask=ask,
+            mark=mark,
+            underlying_mark=underlying_mark,
+        )
+        rules = settings.exit_rules
+        thesis_level = settings.thesis_dead_levels.get(parsed.underlying_symbol)
+        if thesis_level is not None:
+            from dataclasses import replace as dataclass_replace
+
+            rules = dataclass_replace(rules, thesis_dead_underlying=thesis_level)
+
+        decision = evaluate_yolo_position(position, rules=rules, today=today)
+
+        console.rule(f"{parsed.underlying_symbol} — {symbol}")
+        console.print(f"Position: {quantity}x (entry ${entry_price:.2f}, cost ${position.entry_cost:,.2f})")
+        if underlying_mark is not None:
+            console.print(f"{parsed.underlying_symbol} spot: ${underlying_mark:.2f}")
+        console.print(f"Quote: bid ${bid:.2f} / ask ${ask:.2f} / mark ${mark:.2f}")
+        console.print(f"Value at bid: ${position.value_at_bid:,.2f} | P/L at bid: ${decision.pnl_at_bid:+,.2f} ({decision.pnl_pct:+.1f}%) | DTE: {decision.dte}")
+        console.print(f"Recommendation: {decision.recommendation}")
+        for flag in decision.flags:
+            console.print(f"!! {flag}")
+        journal.append(
+            JournalEvent(
+                event_type="yolo_position_check",
+                decision=decision.recommendation,
+                symbol=symbol,
+                reason="; ".join(decision.flags) or "no exit rules triggered",
+                payload={
+                    "quantity": quantity,
+                    "entry_price": entry_price,
+                    "bid": bid,
+                    "mark": mark,
+                    "underlying_mark": underlying_mark,
+                    "pnl_at_bid": decision.pnl_at_bid,
+                    "pnl_pct": decision.pnl_pct,
+                    "dte": decision.dte,
+                },
+            )
+        )
+
+    console.print("Read-only position check: no orders were placed.")
+
+
 if __name__ == "__main__":
     app()
