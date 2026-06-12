@@ -1885,6 +1885,25 @@ def report(
     console.print("No orders were placed; report is read-only.")
 
 
+def _fetch_underlying_mark(client: TastytradeClient, underlying_symbol: str) -> float | None:
+    """Read-only spot lookup via /market-data/by-type. Returns None on failure."""
+    import httpx as _httpx
+
+    try:
+        response = _httpx.get(
+            f"{client.config.base_url}/market-data/by-type",
+            params={"equity": underlying_symbol},
+            headers=client.authorization_headers,
+            timeout=15,
+        )
+        items = response.json().get("data", {}).get("items", [])
+        if items:
+            return float(items[0].get("mark") or items[0].get("last") or 0) or None
+    except Exception:
+        return None
+    return None
+
+
 @app.command("yolo-scan")
 def yolo_scan(
     symbols: list[str] | None = typer.Option(None, "--symbol", "-s", help="Symbol to scan. Repeat to override config/yolo.yaml universe."),
@@ -1961,7 +1980,12 @@ def yolo_scan(
             [contract.option_symbol for contract in contracts]
         )
         quotes = parse_equity_option_market_data(market_items, contracts)
-        candidates = build_yolo_candidates(quotes=quotes, now=now, config=scanner_config)
+        underlying_mark = _fetch_underlying_mark(client, selected_symbol)
+        if underlying_mark is not None:
+            console.print(f"{selected_symbol} spot: ${underlying_mark:.2f}")
+        candidates = build_yolo_candidates(
+            quotes=quotes, now=now, config=scanner_config, underlying_mark=underlying_mark
+        )
         journal.append(
             JournalEvent(
                 event_type="yolo_scan",
@@ -1980,24 +2004,35 @@ def yolo_scan(
             continue
 
         table = Table(title=f"{selected_symbol} YOLO Candidates (read-only)")
+        table.add_column("Score")
         table.add_column("Strategy")
         table.add_column("Option Symbol")
         table.add_column("Exp / DTE")
         table.add_column("Delta")
         table.add_column("Bid/Ask")
+        table.add_column("Spread Tax")
         table.add_column("Qty")
         table.add_column("Cost")
         table.add_column("Breakeven")
+        table.add_column("BE Move")
         for candidate in candidates[:max_results]:
+            be_move = (
+                f"{candidate.breakeven_move_pct:+.1f}%"
+                if underlying_mark is not None
+                else "n/a"
+            )
             table.add_row(
+                f"{candidate.score:.1f}",
                 candidate.strategy_label,
                 candidate.option_symbol,
                 f"{candidate.expiration.isoformat()} / {candidate.dte}",
                 f"{candidate.delta:+.2f}",
                 f"${candidate.bid:.2f}/${candidate.ask:.2f}",
+                f"{candidate.spread_tax_pct:.1f}%",
                 str(candidate.contracts),
                 f"${candidate.total_cost:,.2f}",
                 f"${candidate.breakeven:.2f}",
+                be_move,
             )
         console.print(table)
 
@@ -2021,9 +2056,8 @@ def yolo_positions(
     journal_path: Path = typer.Option(Path("data/journal.jsonl"), help="Audit journal JSONL path."),
 ) -> None:
     """Evaluate exit rules for all open long-option positions. Read-only, never submits orders."""
-    import httpx as _httpx
-
     from tasty_options_bot.yolo.exit_engine import evaluate_yolo_position
+    from tasty_options_bot.yolo.history import build_trade_records, parse_broker_transactions
     from tasty_options_bot.yolo.models import YoloPosition
     from tasty_options_bot.yolo.settings import load_yolo_settings, parse_occ_option_symbol
 
@@ -2049,6 +2083,18 @@ def yolo_positions(
         console.print("No open long-option positions found at broker.")
         return
 
+    # Fees already paid per option symbol, from broker fills (read-only).
+    fees_by_symbol: dict[str, float] = {}
+    try:
+        raw_txns = _fetch_recent_transactions(client, days=120)
+        for record in build_trade_records(parse_broker_transactions(raw_txns)):
+            fees_by_symbol[record.option_symbol] = record.total_fees
+    except Exception:
+        fees_by_symbol = {}
+
+    # Peak P/L per symbol from prior journal position checks (trailing rule).
+    peak_by_symbol = _peak_pnl_pct_from_journal(journal_path)
+
     for raw, parsed in long_options:
         symbol = str(raw["symbol"])
         quantity = int(float(raw.get("quantity", 0)))
@@ -2060,19 +2106,7 @@ def yolo_positions(
         ask = float(quote.get("ask", 0) or 0)
         mark = float(quote.get("mark", 0) or 0)
 
-        underlying_mark: float | None = None
-        try:
-            response = _httpx.get(
-                f"{client.config.base_url}/market-data/by-type",
-                params={"equity": parsed.underlying_symbol},
-                headers=client.authorization_headers,
-                timeout=15,
-            )
-            items = response.json().get("data", {}).get("items", [])
-            if items:
-                underlying_mark = float(items[0].get("mark") or items[0].get("last") or 0) or None
-        except Exception:
-            underlying_mark = None
+        underlying_mark = _fetch_underlying_mark(client, parsed.underlying_symbol)
 
         position = YoloPosition(
             option_symbol=symbol,
@@ -2094,7 +2128,16 @@ def yolo_positions(
 
             rules = dataclass_replace(rules, thesis_dead_underlying=thesis_level)
 
-        decision = evaluate_yolo_position(position, rules=rules, today=today)
+        fees_paid = fees_by_symbol.get(symbol, 0.0)
+        peak_pnl_pct = peak_by_symbol.get(symbol)
+        decision = evaluate_yolo_position(
+            position,
+            rules=rules,
+            today=today,
+            fees_paid=fees_paid,
+            per_contract_close_fee=settings.per_contract_close_fee,
+            peak_pnl_pct=peak_pnl_pct,
+        )
 
         console.rule(f"{parsed.underlying_symbol} — {symbol}")
         console.print(f"Position: {quantity}x (entry ${entry_price:.2f}, cost ${position.entry_cost:,.2f})")
@@ -2102,6 +2145,12 @@ def yolo_positions(
             console.print(f"{parsed.underlying_symbol} spot: ${underlying_mark:.2f}")
         console.print(f"Quote: bid ${bid:.2f} / ask ${ask:.2f} / mark ${mark:.2f}")
         console.print(f"Value at bid: ${position.value_at_bid:,.2f} | P/L at bid: ${decision.pnl_at_bid:+,.2f} ({decision.pnl_pct:+.1f}%) | DTE: {decision.dte}")
+        console.print(
+            f"Net of fees: ${decision.pnl_net_fees:+,.2f} "
+            f"(${fees_paid:,.2f} paid + ${decision.estimated_exit_fees:,.2f} est. to close)"
+        )
+        if peak_pnl_pct is not None:
+            console.print(f"Session peak P/L: {peak_pnl_pct:+.1f}%")
         console.print(f"Recommendation: {decision.recommendation}")
         for flag in decision.flags:
             console.print(f"!! {flag}")
@@ -2119,12 +2168,128 @@ def yolo_positions(
                     "underlying_mark": underlying_mark,
                     "pnl_at_bid": decision.pnl_at_bid,
                     "pnl_pct": decision.pnl_pct,
+                    "pnl_net_fees": decision.pnl_net_fees,
+                    "fees_paid": fees_paid,
+                    "estimated_exit_fees": decision.estimated_exit_fees,
+                    "peak_pnl_pct": peak_pnl_pct,
                     "dte": decision.dte,
                 },
             )
         )
 
     console.print("Read-only position check: no orders were placed.")
+
+
+def _fetch_recent_transactions(client: TastytradeClient, *, days: int) -> list[dict[str, Any]]:
+    """Read-only fetch of recent account transactions (fills)."""
+    import httpx as _httpx
+
+    start = (datetime.now(timezone.utc) - timedelta(days=days)).date().isoformat()
+    response = _httpx.get(
+        f"{client.config.base_url}/accounts/{client.config.account_number}/transactions",
+        params={"start-date": start, "per-page": 250},
+        headers=client.authorization_headers,
+        timeout=20,
+    )
+    response.raise_for_status()
+    return response.json().get("data", {}).get("items", [])
+
+
+def _peak_pnl_pct_from_journal(journal_path: Path) -> dict[str, float]:
+    """Highest pnl_pct ever journaled per option symbol (for the trailing rule)."""
+    import json as _json
+
+    peaks: dict[str, float] = {}
+    if not journal_path.exists():
+        return peaks
+    for line in journal_path.read_text().splitlines():
+        try:
+            event = _json.loads(line)
+        except ValueError:
+            continue
+        if event.get("event_type") != "yolo_position_check":
+            continue
+        symbol = str(event.get("symbol", ""))
+        pnl_pct = event.get("payload", {}).get("pnl_pct")
+        if not symbol or not isinstance(pnl_pct, (int, float)):
+            continue
+        peaks[symbol] = max(peaks.get(symbol, float("-inf")), float(pnl_pct))
+    return peaks
+
+
+@app.command("yolo-history")
+def yolo_history(
+    days: int = typer.Option(120, help="How many days of broker transactions to reconcile."),
+    symbol: str | None = typer.Option(None, "--symbol", "-s", help="Filter to one underlying symbol."),
+    journal_path: Path = typer.Option(Path("data/journal.jsonl"), help="Audit journal JSONL path."),
+) -> None:
+    """Reconcile broker fills into a round-trip YOLO trade ledger. Read-only."""
+    from tasty_options_bot.yolo.history import build_trade_records, parse_broker_transactions
+
+    client = build_tastytrade_client()
+    authenticate_client(client)
+    journal = Journal(journal_path)
+
+    raw_txns = _fetch_recent_transactions(client, days=days)
+    fills = parse_broker_transactions(raw_txns)
+    records = build_trade_records(fills)
+    if symbol:
+        wanted = symbol.upper().strip()
+        records = [record for record in records if record.underlying_symbol == wanted]
+
+    if not records:
+        console.print("No option trades found in the window.")
+        return
+
+    table = Table(title=f"YOLO Trade Ledger (last {days} days, from broker fills)")
+    table.add_column("Status")
+    table.add_column("Option Symbol")
+    table.add_column("Opened (UTC)")
+    table.add_column("Qty B/S")
+    table.add_column("Avg Entry")
+    table.add_column("Avg Exit")
+    table.add_column("Gross P/L")
+    table.add_column("Fees")
+    table.add_column("Net P/L")
+    for record in records:
+        table.add_row(
+            record.status,
+            record.option_symbol,
+            record.opened_at.strftime("%Y-%m-%d %H:%M"),
+            f"{record.bought_quantity}/{record.sold_quantity}",
+            f"${record.avg_entry_price:.2f}",
+            f"${record.avg_exit_price:.2f}" if record.avg_exit_price is not None else "—",
+            f"${record.gross_realized:+,.2f}" if record.sold_quantity else "—",
+            f"${record.total_fees:,.2f}",
+            f"${record.net_realized:+,.2f}" if record.sold_quantity else "—",
+        )
+    console.print(table)
+
+    closed = [record for record in records if record.status != "OPEN"]
+    wins = [record for record in closed if record.is_win]
+    total_net = round(sum(record.net_realized for record in closed), 2)
+    total_fees = round(sum(record.total_fees for record in records), 2)
+    console.print(
+        f"Closed/partial trades: {len(closed)} | Wins: {len(wins)} | "
+        f"Net realized (after fees): ${total_net:+,.2f} | Total fees all trades: ${total_fees:,.2f}"
+    )
+    journal.append(
+        JournalEvent(
+            event_type="yolo_history",
+            decision="reconciled",
+            symbol=symbol or "ALL",
+            reason=f"{len(records)} ledger rows from {len(fills)} fills",
+            payload={
+                "days": days,
+                "fills": len(fills),
+                "records": len(records),
+                "closed": len(closed),
+                "net_realized": total_net,
+                "total_fees": total_fees,
+            },
+        )
+    )
+    console.print("Read-only ledger: no orders were placed.")
 
 
 if __name__ == "__main__":

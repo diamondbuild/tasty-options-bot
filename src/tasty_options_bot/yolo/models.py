@@ -37,6 +37,9 @@ class YoloCandidate:
     limit_price: float
     total_cost: float
     breakeven: float
+    spread_tax_pct: float = 0.0
+    breakeven_move_pct: float = 0.0
+    score: float = 0.0
 
     @property
     def strategy_label(self) -> str:

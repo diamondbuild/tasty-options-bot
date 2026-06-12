@@ -44,6 +44,7 @@ class YoloSettings:
     scanner: YoloConfig = field(default_factory=YoloConfig)
     exit_rules: YoloExitRules = field(default_factory=YoloExitRules)
     thesis_dead_levels: dict[str, float] = field(default_factory=dict)
+    per_contract_close_fee: float = 0.15
 
 
 def load_yolo_settings(path: str | Path = "config/yolo.yaml") -> YoloSettings:
@@ -81,7 +82,17 @@ def load_yolo_settings(path: str | Path = "config/yolo.yaml") -> YoloSettings:
         theta_warning_dte=int(exit_raw.get("theta_warning_dte", 3)),
         final_day_dte=int(exit_raw.get("final_day_dte", 1)),
         thesis_dead_underlying=None,
+        short_dte_take_profit_dte=int(exit_raw.get("short_dte_take_profit_dte", 5)),
+        short_dte_take_profit_pct=float(
+            exit_raw.get("short_dte_take_profit_pct", 20.0)
+        ),
+        trailing_giveback_pct=float(exit_raw.get("trailing_giveback_pct", 25.0)),
     )
+    fees_raw = raw.get("fees", {}) if isinstance(raw.get("fees"), dict) else {}
+    per_contract_close_fee = float(fees_raw.get("per_contract_close_fee", 0.15))
     return YoloSettings(
-        scanner=scanner, exit_rules=exit_rules, thesis_dead_levels=thesis_dead_levels
+        scanner=scanner,
+        exit_rules=exit_rules,
+        thesis_dead_levels=thesis_dead_levels,
+        per_contract_close_fee=per_contract_close_fee,
     )

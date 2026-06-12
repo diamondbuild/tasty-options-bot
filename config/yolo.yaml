@@ -24,7 +24,20 @@ exit_rules:
   stop_loss_pct: -50.0
   theta_warning_dte: 3
   final_day_dte: 1
+  # v2 (learned from the first SMCI round trip):
+  # decent gain with the clock running out -> take it before theta does
+  short_dte_take_profit_dte: 5
+  short_dte_take_profit_pct: 20.0
+  # after a 50%+ run, never give back more than this many percentage
+  # points from the observed peak without locking gains
+  trailing_giveback_pct: 25.0
   # Per-underlying thesis-dead levels. Calls: exit if spot drops below.
   # Puts: exit if spot rises above.
   thesis_dead_levels:
     SMCI: 27.0
+
+# Fee model (tastytrade: $1.00/contract to open capped commissions,
+# ~$0.13-0.15/contract regulatory+clearing to close)
+fees:
+  per_contract_close_fee: 0.15
+
