@@ -1,0 +1,32 @@
+[project]
+name = "image-to-3d"
+version = "1.0.0"
+description = "Convert photos to 3D printable STL files (lithophane, relief, emboss)"
+requires-python = ">=3.11"
+dependencies = [
+  "fastapi>=0.110",
+  "uvicorn[standard]>=0.27",
+  "python-multipart>=0.0.9",
+  "pillow>=10",
+  "numpy>=1.26",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8",
+  "httpx>=0.27",
+]
+
+[project.scripts]
+img3d = "img3d.main:app"
+
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["."]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]

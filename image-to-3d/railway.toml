@@ -1,0 +1,8 @@
+[build]
+builder = "DOCKERFILE"
+
+[deploy]
+startCommand = "uvicorn img3d.main:app --host 0.0.0.0 --port $PORT"
+healthcheckPath = "/"
+healthcheckTimeout = 30
+restartPolicyType = "ON_FAILURE"
