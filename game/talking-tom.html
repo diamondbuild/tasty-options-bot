@@ -1,0 +1,869 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+<title>My Talking Tom 2 — Fan Game</title>
+<style>
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; padding: 0; height: 100%; overflow: hidden; }
+  body {
+    font-family: "Chalkboard SE", "Comic Sans MS", "Comic Sans", "Segoe Print", cursive, sans-serif;
+    background: #1D2A4D;
+    touch-action: manipulation;
+    user-select: none; -webkit-user-select: none;
+    color: #1D2A4D;
+  }
+  #app { display: flex; flex-direction: column; height: 100dvh; max-width: 560px; margin: 0 auto; }
+
+  /* ---------- Stat bars ---------- */
+  #stats {
+    display: flex; gap: 6px; padding: 8px 10px;
+    background: #14203E; z-index: 5;
+  }
+  .stat { flex: 1; text-align: center; }
+  .stat .ico { font-size: 20px; line-height: 1; }
+  .stat .bar {
+    height: 10px; margin-top: 3px; border-radius: 6px;
+    background: #2B3A63; overflow: hidden; border: 1.5px solid #0B142B;
+  }
+  .stat .fill { height: 100%; width: 50%; border-radius: 6px; transition: width .4s; }
+  .stat.crit .ico { animation: pulse .6s infinite alternate; }
+  @keyframes pulse { from { transform: scale(1); } to { transform: scale(1.35); } }
+  #f-happy   { background: #FF7BAC; }
+  #f-food    { background: #FFC93C; }
+  #f-energy  { background: #6FCF5B; }
+  #f-bladder { background: #58C7F3; }
+  #f-clean   { background: #C39BF5; }
+
+  /* ---------- Stage / rooms ---------- */
+  #stage { position: relative; flex: 1; overflow: hidden; }
+  .roombg { position: absolute; inset: 0; opacity: 0; transition: opacity .35s; pointer-events: none; }
+  .roombg.on { opacity: 1; }
+  #bg-living  { background: linear-gradient(#8ED6F5 60%, #6FCF5B 60%); }
+  #bg-kitchen { background: linear-gradient(#FFE9B8 62%, #E8A05C 62%); }
+  #bg-bath    { background: linear-gradient(#AEE9E4 62%, #57B8B0 62%);
+                background-image: repeating-linear-gradient(90deg, transparent 0 58px, rgba(255,255,255,.35) 58px 62px),
+                                  linear-gradient(#AEE9E4 62%, #57B8B0 62%); }
+  #bg-bed     { background: linear-gradient(#1D2A4D 65%, #3A2E5E 65%); }
+  #bg-airport { background: linear-gradient(#8ED6F5 70%, #9AA5B5 70%); }
+  .prop { position: absolute; font-size: 64px; filter: drop-shadow(0 3px 2px rgba(0,0,0,.15)); }
+
+  #nightShade {
+    position: absolute; inset: 0; background: rgba(6,10,26,.72);
+    opacity: 0; pointer-events: none; transition: opacity .8s; z-index: 3;
+  }
+  #nightShade.on { opacity: 1; }
+  .star { position: absolute; color: #FFEFA8; font-size: 18px; animation: twinkle 2s infinite alternate; }
+  @keyframes twinkle { from { opacity: .3; } to { opacity: 1; } }
+
+  /* ---------- Tom ---------- */
+  #tomWrap {
+    position: absolute; left: 50%; bottom: 12%;
+    transform: translateX(-50%);
+    width: min(58vw, 260px); z-index: 4;
+    cursor: pointer; transition: transform .2s;
+  }
+  #tomWrap.bounce { animation: bounce .45s; }
+  @keyframes bounce { 30% { transform: translateX(-50%) scale(1.08, .92); } 60% { transform: translateX(-50%) scale(.95, 1.06); } }
+  #tomWrap.sleeping { transform: translateX(-50%) rotate(-4deg); }
+
+  /* SVG expression control */
+  .mouth path { display: none; }
+  svg.m-smile .mo-smile, svg.m-big .mo-big, svg.m-flat .mo-flat,
+  svg.m-sad .mo-sad, svg.m-o .mo-o { display: block; }
+  .eyes-open, .eyes-closed, .eyes-happy { display: none; }
+  svg.e-open .eyes-open, svg.e-closed .eyes-closed, svg.e-happy .eyes-happy { display: block; }
+  svg.blink .eyes-open { display: none; }
+  svg.blink .eyes-closed { display: block; }
+
+  #speech {
+    position: absolute; left: 50%; transform: translateX(-50%);
+    bottom: calc(12% + min(58vw, 260px) * 1.15);
+    background: #fff; border: 3px solid #1D2A4D; border-radius: 16px;
+    padding: 8px 14px; font-size: 16px; white-space: nowrap;
+    opacity: 0; transition: opacity .3s; z-index: 6; pointer-events: none;
+    max-width: 90vw; white-space: normal; text-align: center;
+  }
+  #speech.show { opacity: 1; }
+  #speech::after {
+    content: ""; position: absolute; left: 50%; bottom: -12px; transform: translateX(-50%);
+    border: 6px solid transparent; border-top: 8px solid #1D2A4D;
+  }
+
+  .float { position: absolute; font-size: 28px; z-index: 7; pointer-events: none; animation: floatUp 1.4s forwards; }
+  @keyframes floatUp { to { transform: translateY(-110px) scale(1.4); opacity: 0; } }
+
+  #poop {
+    position: absolute; bottom: 10%; left: 22%; font-size: 52px; z-index: 4;
+    cursor: pointer; display: none; animation: pulse 1s infinite alternate;
+  }
+  #poop .lbl { font-size: 13px; background: #fff; border-radius: 8px; padding: 2px 6px; display: block; text-align: center; }
+
+  /* ---------- Action panels ---------- */
+  #panel {
+    background: #14203E; padding: 10px; min-height: 96px;
+    display: flex; align-items: center; justify-content: center; gap: 8px; flex-wrap: wrap;
+    z-index: 5;
+  }
+  .apanel { display: none; width: 100%; justify-content: center; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .apanel.on { display: flex; }
+  .bigbtn {
+    font-family: inherit; font-size: 17px; font-weight: bold;
+    background: #FFC93C; color: #1D2A4D;
+    border: 3px solid #B8860B; border-radius: 16px;
+    padding: 10px 16px; cursor: pointer; box-shadow: 0 4px 0 #B8860B;
+  }
+  .bigbtn:active { transform: translateY(3px); box-shadow: 0 1px 0 #B8860B; }
+  .bigbtn:disabled { opacity: .45; box-shadow: none; }
+  .bigbtn.blue { background: #58C7F3; border-color: #1D7FA8; box-shadow: 0 4px 0 #1D7FA8; }
+  .bigbtn.pink { background: #FF7BAC; border-color: #B34472; box-shadow: 0 4px 0 #B34472; }
+  .foodbtn { font-size: 34px; background: #fff; border: 3px solid #B8860B; border-radius: 14px; padding: 6px 10px; cursor: pointer; box-shadow: 0 3px 0 #B8860B; }
+  .foodbtn:active { transform: translateY(2px); box-shadow: none; }
+  .soap {
+    width: 44px; height: 44px; border-radius: 50%; cursor: pointer;
+    border: 3px solid rgba(255,255,255,.7); box-shadow: 0 3px 4px rgba(0,0,0,.3);
+  }
+  .soap.sel { outline: 4px solid #FFC93C; }
+  .hint { width: 100%; text-align: center; color: #BFD0F0; font-size: 14px; margin: 0; }
+
+  /* ---------- Bottom nav ---------- */
+  #nav { display: flex; background: #0B142B; padding: 6px; gap: 6px; z-index: 5; }
+  .tab {
+    flex: 1; font-size: 26px; padding: 8px 0 4px; text-align: center;
+    background: #1D2A4D; border: none; border-radius: 12px; cursor: pointer;
+    color: #BFD0F0;
+  }
+  .tab small { display: block; font-size: 10px; font-family: inherit; }
+  .tab.on { background: #FFC93C; color: #1D2A4D; }
+  .tab .alert { position: relative; }
+  .tab.needs::after { content: "❗"; font-size: 12px; }
+
+  /* ---------- Plane game ---------- */
+  #planeGame { position: absolute; inset: 0; z-index: 20; display: none; background: #8ED6F5; }
+  #planeGame.on { display: block; }
+  #planeCanvas { width: 100%; height: 100%; display: block; }
+  #planeHud {
+    position: absolute; top: 10px; left: 0; right: 0; text-align: center;
+    font-size: 22px; color: #14203E; font-weight: bold; pointer-events: none;
+  }
+  #planeMsg {
+    position: absolute; inset: 0; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; gap: 14px; text-align: center;
+    background: rgba(20,32,62,.55); color: #fff; font-size: 20px; padding: 20px;
+  }
+  #planeMsg.hidden { display: none; }
+
+  /* ---------- Shop ---------- */
+  #shop {
+    position: absolute; inset: 0; z-index: 21; display: none; overflow-y: auto;
+    background: #14203E; color: #fff; padding: 16px;
+  }
+  #shop.on { display: block; }
+  .prize {
+    display: flex; align-items: center; gap: 12px; background: #1D2A4D;
+    border-radius: 14px; padding: 10px 14px; margin-bottom: 10px;
+  }
+  .prize .pi { font-size: 40px; }
+  .prize .pn { flex: 1; }
+  .prize .pn small { display: block; color: #BFD0F0; }
+  #shelf { position: absolute; top: 8px; left: 8px; z-index: 4; display: flex; gap: 4px; font-size: 26px; flex-wrap: wrap; max-width: 45%; }
+  #tickets { position: absolute; top: 8px; right: 8px; z-index: 6; background: #FFC93C; border-radius: 12px; padding: 4px 10px; font-weight: bold; font-size: 15px; border: 2px solid #B8860B; }
+
+  .bubblefx { position: absolute; border-radius: 50%; z-index: 6; pointer-events: none; animation: bub 1.6s forwards; opacity: .85; }
+  @keyframes bub { to { transform: translateY(-140px) scale(.4); opacity: 0; } }
+
+  @media (prefers-reduced-motion: reduce) {
+    .float, .bubblefx, .star, .stat.crit .ico, #poop { animation: none; }
+  }
+</style>
+</head>
+<body>
+<div id="app">
+
+  <div id="stats">
+    <div class="stat" id="s-happy"><div class="ico">😊</div><div class="bar"><div class="fill" id="f-happy"></div></div></div>
+    <div class="stat" id="s-food"><div class="ico">🍗</div><div class="bar"><div class="fill" id="f-food"></div></div></div>
+    <div class="stat" id="s-energy"><div class="ico">⚡</div><div class="bar"><div class="fill" id="f-energy"></div></div></div>
+    <div class="stat" id="s-bladder"><div class="ico">🚽</div><div class="bar"><div class="fill" id="f-bladder"></div></div></div>
+    <div class="stat" id="s-clean"><div class="ico">🧼</div><div class="bar"><div class="fill" id="f-clean"></div></div></div>
+  </div>
+
+  <div id="stage">
+    <div class="roombg on" id="bg-living"></div>
+    <div class="roombg" id="bg-kitchen"></div>
+    <div class="roombg" id="bg-bath"></div>
+    <div class="roombg" id="bg-bed"></div>
+    <div class="roombg" id="bg-airport"></div>
+    <div id="props"></div>
+    <div id="nightShade"></div>
+    <div id="shelf" title="Tom's prizes"></div>
+    <div id="tickets">🎟️ 0</div>
+    <div id="speech"></div>
+
+    <div id="poop"><span>💩</span><span class="lbl">tap to clean!</span></div>
+
+    <div id="tomWrap">
+      <svg id="tom" class="e-open m-smile" viewBox="0 0 240 300" role="img" aria-label="Tom the cat">
+        <!-- tail -->
+        <path d="M185 235 q45 -8 38 -52 q-4 -22 -22 -20 q12 4 12 22 q2 32 -30 40 z" fill="#8593A8"/>
+        <!-- legs -->
+        <ellipse cx="90" cy="278" rx="26" ry="16" fill="#A6B1C2"/>
+        <ellipse cx="150" cy="278" rx="26" ry="16" fill="#A6B1C2"/>
+        <ellipse cx="90" cy="281" rx="18" ry="9" fill="#EDF1F7"/>
+        <ellipse cx="150" cy="281" rx="18" ry="9" fill="#EDF1F7"/>
+        <!-- body -->
+        <ellipse cx="120" cy="222" rx="58" ry="52" fill="#A6B1C2"/>
+        <ellipse cx="120" cy="232" rx="38" ry="36" fill="#EDF1F7"/>
+        <!-- arms -->
+        <ellipse cx="66" cy="218" rx="15" ry="30" fill="#A6B1C2" transform="rotate(18 66 218)"/>
+        <ellipse cx="174" cy="218" rx="15" ry="30" fill="#A6B1C2" transform="rotate(-18 174 218)"/>
+        <!-- ears -->
+        <path d="M55 62 L75 18 L98 52 z" fill="#A6B1C2"/>
+        <path d="M185 62 L165 18 L142 52 z" fill="#A6B1C2"/>
+        <path d="M64 55 L76 30 L90 50 z" fill="#FFB3C7"/>
+        <path d="M176 55 L164 30 L150 50 z" fill="#FFB3C7"/>
+        <!-- head -->
+        <ellipse cx="120" cy="105" rx="72" ry="66" fill="#A6B1C2"/>
+        <ellipse cx="120" cy="128" rx="46" ry="34" fill="#EDF1F7"/>
+        <!-- dirt spots -->
+        <g id="dirt" opacity="0">
+          <ellipse cx="80" cy="90" rx="12" ry="8" fill="#8a6a3b" opacity=".7"/>
+          <ellipse cx="160" cy="120" rx="10" ry="7" fill="#8a6a3b" opacity=".7"/>
+          <ellipse cx="105" cy="235" rx="13" ry="8" fill="#8a6a3b" opacity=".7"/>
+          <ellipse cx="145" cy="200" rx="9" ry="6" fill="#8a6a3b" opacity=".7"/>
+        </g>
+        <!-- eyes -->
+        <g class="eyes-open">
+          <ellipse cx="92" cy="92" rx="18" ry="22" fill="#fff"/>
+          <ellipse cx="148" cy="92" rx="18" ry="22" fill="#fff"/>
+          <ellipse cx="94" cy="96" rx="9" ry="12" fill="#3E8E41"/>
+          <ellipse cx="146" cy="96" rx="9" ry="12" fill="#3E8E41"/>
+          <circle cx="94" cy="96" r="4.5" fill="#111"/>
+          <circle cx="146" cy="96" r="4.5" fill="#111"/>
+          <circle cx="96" cy="92" r="1.8" fill="#fff"/>
+          <circle cx="148" cy="92" r="1.8" fill="#fff"/>
+        </g>
+        <g class="eyes-closed">
+          <path d="M76 94 q16 12 32 0" stroke="#4A5568" stroke-width="4" fill="none" stroke-linecap="round"/>
+          <path d="M132 94 q16 12 32 0" stroke="#4A5568" stroke-width="4" fill="none" stroke-linecap="round"/>
+        </g>
+        <g class="eyes-happy">
+          <path d="M76 96 q16 -14 32 0" stroke="#111" stroke-width="4.5" fill="none" stroke-linecap="round"/>
+          <path d="M132 96 q16 -14 32 0" stroke="#111" stroke-width="4.5" fill="none" stroke-linecap="round"/>
+        </g>
+        <!-- nose + mouth -->
+        <path d="M112 122 L128 122 L120 132 z" fill="#FF7BAC"/>
+        <g class="mouth">
+          <path class="mo-smile" d="M100 140 q20 16 40 0" stroke="#4A5568" stroke-width="4" fill="none" stroke-linecap="round"/>
+          <path class="mo-big" d="M98 138 q22 26 44 0 q-22 10 -44 0 z" fill="#B3405F" stroke="#4A5568" stroke-width="3"/>
+          <path class="mo-flat" d="M104 144 L136 144" stroke="#4A5568" stroke-width="4" stroke-linecap="round"/>
+          <path class="mo-sad" d="M100 150 q20 -14 40 0" stroke="#4A5568" stroke-width="4" fill="none" stroke-linecap="round"/>
+          <path class="mo-o" d="M120 145 m-9 0 a9 10 0 1 0 18 0 a9 10 0 1 0 -18 0" fill="#B3405F" stroke="#4A5568" stroke-width="3"/>
+        </g>
+        <!-- whiskers -->
+        <g stroke="#7C8AA0" stroke-width="2.5" stroke-linecap="round">
+          <path d="M50 112 L20 106"/><path d="M50 122 L20 126"/>
+          <path d="M190 112 L220 106"/><path d="M190 122 L220 126"/>
+        </g>
+        <!-- MrBeast cap (prize) -->
+        <g id="cap" style="display:none">
+          <path d="M52 62 q68 -46 136 0 l-6 14 q-62 -34 -124 0 z" fill="#37B6F6" stroke="#1D7FA8" stroke-width="3"/>
+          <ellipse cx="120" cy="36" rx="52" ry="20" fill="#37B6F6" stroke="#1D7FA8" stroke-width="3"/>
+          <text x="120" y="44" text-anchor="middle" font-size="22" font-weight="bold" fill="#fff" font-family="Arial">B</text>
+        </g>
+      </svg>
+    </div>
+
+    <!-- Airplane mini-game -->
+    <div id="planeGame">
+      <canvas id="planeCanvas"></canvas>
+      <div id="planeHud">🪙 <span id="planeScore">0</span></div>
+      <div id="planeMsg">
+        <div style="font-size:42px">🛩️🐱</div>
+        <div id="planeMsgText">Tap to make Tom's plane fly UP!<br>Grab coins 🪙 and dodge storm clouds ⛈️<br>Coins become prize tickets! 🎟️</div>
+        <button class="bigbtn" id="planeStartBtn">Take off! ✈️</button>
+        <button class="bigbtn blue" id="planeExitBtn">Back to Tom</button>
+      </div>
+    </div>
+
+    <!-- MrBeast prize shop -->
+    <div id="shop">
+      <h2 style="margin-top:0">🎁 Beast Prize Shop</h2>
+      <p style="color:#BFD0F0">Win tickets in the airplane game to unlock MrBeast prizes for Tom!</p>
+      <div id="prizeList"></div>
+      <button class="bigbtn blue" id="shopCloseBtn">Back ✈️</button>
+    </div>
+  </div>
+
+  <div id="panel">
+    <div class="apanel on" id="p-living">
+      <p class="hint">Tap Tom to pet and tickle him! 💕</p>
+      <button class="bigbtn pink" id="btnPet">Pet Tom 🤗</button>
+      <button class="bigbtn" id="btnJoke">Tell a joke 🤪</button>
+    </div>
+    <div class="apanel" id="p-kitchen">
+      <p class="hint">Pick a snack for Tom!</p>
+      <button class="foodbtn" data-food="🍗">🍗</button>
+      <button class="foodbtn" data-food="🍕">🍕</button>
+      <button class="foodbtn" data-food="🍎">🍎</button>
+      <button class="foodbtn" data-food="🎂">🎂</button>
+      <button class="foodbtn" data-food="🥛">🥛</button>
+      <button class="foodbtn" data-food="🍫">🍫</button>
+    </div>
+    <div class="apanel" id="p-bath">
+      <p class="hint" id="bathHint">Pick a color soap, then rub Tom to scrub! 🫧</p>
+      <div class="soap" data-c="#FF7BAC" style="background:#FF7BAC"></div>
+      <div class="soap" data-c="#58C7F3" style="background:#58C7F3"></div>
+      <div class="soap" data-c="#6FCF5B" style="background:#6FCF5B"></div>
+      <div class="soap" data-c="#C39BF5" style="background:#C39BF5"></div>
+      <div class="soap" data-c="rainbow" style="background:conic-gradient(red,orange,yellow,green,blue,violet,red)"></div>
+      <button class="bigbtn blue" id="btnPotty">Go potty! 🚽</button>
+    </div>
+    <div class="apanel" id="p-bed">
+      <button class="bigbtn blue" id="btnLight">Turn light off 💡</button>
+      <p class="hint">When it's dark, Tom falls asleep and gets his energy back.</p>
+    </div>
+    <div class="apanel" id="p-airport">
+      <button class="bigbtn" id="btnFly">Fly the plane! 🛩️</button>
+      <button class="bigbtn pink" id="btnShop">Beast Shop 🎁</button>
+      <p class="hint">Tom needs ⚡ energy to fly. Win coins → get tickets → unlock prizes!</p>
+    </div>
+  </div>
+
+  <div id="nav">
+    <button class="tab on" data-room="living">🛋️<small>Play</small></button>
+    <button class="tab" data-room="kitchen">🍗<small>Food</small></button>
+    <button class="tab" data-room="bath">🛁<small>Bath</small></button>
+    <button class="tab" data-room="bed">🛏️<small>Sleep</small></button>
+    <button class="tab" data-room="airport">✈️<small>Fly</small></button>
+  </div>
+</div>
+
+<script>
+(function () {
+  "use strict";
+  var $ = function (id) { return document.getElementById(id); };
+  var clamp = function (v) { return Math.max(0, Math.min(100, v)); };
+
+  /* ---------------- state ---------------- */
+  var SAVE_KEY = "talking-tom-fan-game-v1";
+  var state = {
+    happy: 80, food: 70, energy: 90, bladder: 20, clean: 90,
+    tickets: 0, owned: [], wearCap: false, ts: Date.now()
+  };
+  try {
+    var raw = localStorage.getItem(SAVE_KEY);
+    if (raw) {
+      var s = JSON.parse(raw);
+      Object.keys(state).forEach(function (k) { if (k in s) state[k] = s[k]; });
+      // catch-up decay while away (capped at 6 hours worth)
+      var mins = Math.min(360, (Date.now() - (s.ts || Date.now())) / 60000);
+      state.food = clamp(state.food - mins * 0.4);
+      state.energy = clamp(state.energy - mins * 0.2);
+      state.clean = clamp(state.clean - mins * 0.15);
+      state.bladder = clamp(state.bladder + mins * 0.2);
+      state.happy = clamp(state.happy - mins * 0.3);
+    }
+  } catch (e) {}
+  function save() { state.ts = Date.now(); try { localStorage.setItem(SAVE_KEY, JSON.stringify(state)); } catch (e) {} }
+
+  var sleeping = false;
+  var inBathScrub = false;
+  var room = "living";
+  var pottyBusy = false;
+
+  /* ---------------- tiny sounds ---------------- */
+  var AC = window.AudioContext || window.webkitAudioContext, actx = null;
+  function beep(freq, dur, type) {
+    try {
+      if (!actx) actx = new AC();
+      if (actx.state === "suspended") actx.resume();
+      var o = actx.createOscillator(), g = actx.createGain();
+      o.type = type || "square"; o.frequency.value = freq;
+      g.gain.setValueAtTime(0.08, actx.currentTime);
+      g.gain.exponentialRampToValueAtTime(0.001, actx.currentTime + dur);
+      o.connect(g); g.connect(actx.destination);
+      o.start(); o.stop(actx.currentTime + dur);
+    } catch (e) {}
+  }
+  function chime() { beep(660, .12, "triangle"); setTimeout(function(){ beep(880, .15, "triangle"); }, 110); }
+
+  /* ---------------- speech + fx ---------------- */
+  var speechTimer = null;
+  function say(text, ms) {
+    var el = $("speech");
+    el.textContent = text; el.classList.add("show");
+    clearTimeout(speechTimer);
+    speechTimer = setTimeout(function () { el.classList.remove("show"); }, ms || 2200);
+  }
+  function floatFx(emoji, xPct, yPct) {
+    var f = document.createElement("div");
+    f.className = "float"; f.textContent = emoji;
+    f.style.left = (xPct || 45 + Math.random() * 10) + "%";
+    f.style.bottom = (yPct || 40) + "%";
+    $("stage").appendChild(f);
+    setTimeout(function () { f.remove(); }, 1400);
+  }
+  function bounceTom() {
+    var w = $("tomWrap");
+    w.classList.remove("bounce"); void w.offsetWidth; w.classList.add("bounce");
+  }
+
+  /* ---------------- expressions ---------------- */
+  function setFace(eyes, mouth) {
+    var svg = $("tom");
+    svg.classList.remove("e-open", "e-closed", "e-happy", "m-smile", "m-big", "m-flat", "m-sad", "m-o");
+    svg.classList.add("e-" + eyes, "m-" + mouth);
+  }
+  function refreshFace() {
+    if (sleeping) { setFace("closed", "smile"); return; }
+    var worst = Math.min(state.happy, state.food, state.energy, 100 - state.bladder, state.clean);
+    if (worst < 15) setFace("open", "sad");
+    else if (worst < 40) setFace("open", "flat");
+    else if (state.happy > 75) setFace("happy", "big");
+    else setFace("open", "smile");
+  }
+  setInterval(function () { // blink
+    if (sleeping) return;
+    var svg = $("tom");
+    svg.classList.add("blink");
+    setTimeout(function () { svg.classList.remove("blink"); }, 160);
+  }, 3400);
+
+  /* ---------------- stats UI ---------------- */
+  function refreshBars() {
+    $("f-happy").style.width = state.happy + "%";
+    $("f-food").style.width = state.food + "%";
+    $("f-energy").style.width = state.energy + "%";
+    $("f-bladder").style.width = (100 - state.bladder) + "%";
+    $("f-clean").style.width = state.clean + "%";
+    $("s-happy").classList.toggle("crit", state.happy < 25);
+    $("s-food").classList.toggle("crit", state.food < 25);
+    $("s-energy").classList.toggle("crit", state.energy < 25);
+    $("s-bladder").classList.toggle("crit", state.bladder > 75);
+    $("s-clean").classList.toggle("crit", state.clean < 25);
+    $("dirt").setAttribute("opacity", ((100 - state.clean) / 100).toFixed(2));
+    $("tickets").textContent = "🎟️ " + state.tickets;
+    document.querySelector('[data-room="bath"]').classList.toggle("needs", state.bladder > 70 || state.clean < 40);
+    document.querySelector('[data-room="kitchen"]').classList.toggle("needs", state.food < 30);
+    document.querySelector('[data-room="bed"]').classList.toggle("needs", state.energy < 30);
+    refreshFace();
+  }
+
+  /* ---------------- game tick ---------------- */
+  var hintCd = 0;
+  setInterval(function () {
+    if (sleeping) {
+      state.energy = clamp(state.energy + 1.3);
+      state.happy = clamp(state.happy + 0.05);
+      if (state.energy >= 100) wakeUp("Tom is full of energy! ⚡");
+    } else {
+      state.food = clamp(state.food - 0.12);
+      state.energy = clamp(state.energy - 0.06);
+      state.clean = clamp(state.clean - 0.05);
+      state.bladder = clamp(state.bladder + 0.07);
+      var drag = 0.04;
+      if (state.food < 25 || state.energy < 25 || state.clean < 25 || state.bladder > 80) drag = 0.3;
+      state.happy = clamp(state.happy - drag);
+    }
+    if (state.bladder >= 100 && !pottyBusy) accident();
+
+    hintCd--;
+    if (hintCd <= 0 && !sleeping) {
+      if (state.bladder > 80) { say("I really gotta GO! 🚽💦"); hintCd = 12; }
+      else if (state.food < 25) { say("My tummy is rumbling... 🍗"); hintCd = 12; }
+      else if (state.clean < 30) { say("I'm stinky! Bath time? 🛁"); hintCd = 12; }
+      else if (state.energy < 25) { say("So sleepy... 🥱"); hintCd = 12; }
+    }
+    refreshBars();
+    save();
+  }, 1000);
+
+  /* ---------------- rooms ---------------- */
+  var TABS = document.querySelectorAll(".tab");
+  var PROPS = {
+    living: [["🪟", "12%", "8%"], ["🧸", "78%", "68%"]],
+    kitchen: [["🍳", "10%", "12%"], ["🧊", "80%", "10%"]],
+    bath: [["🚽", "12%", "55%"], ["🛁", "75%", "58%"], ["🪥", "80%", "12%"]],
+    bed: [["🌙", "80%", "6%"], ["🛏️", "10%", "60%"]],
+    airport: [["🛫", "10%", "10%"], ["🧳", "80%", "62%"]]
+  };
+  function setRoom(r) {
+    room = r;
+    ["living", "kitchen", "bath", "bed", "airport"].forEach(function (k) {
+      $("bg-" + k).classList.toggle("on", k === r);
+      $("p-" + k).classList.toggle("on", k === r);
+    });
+    TABS.forEach(function (t) { t.classList.toggle("on", t.dataset.room === r); });
+    var props = $("props"); props.innerHTML = "";
+    PROPS[r].forEach(function (p) {
+      var d = document.createElement("div");
+      d.className = "prop"; d.textContent = p[0];
+      d.style.left = p[1]; d.style.top = p[2];
+      props.appendChild(d);
+    });
+    if (r === "bed") {
+      for (var i = 0; i < 8; i++) {
+        var st = document.createElement("div");
+        st.className = "star prop"; st.textContent = "✦";
+        st.style.fontSize = "16px";
+        st.style.left = (5 + Math.random() * 90) + "%";
+        st.style.top = (3 + Math.random() * 35) + "%";
+        st.style.animationDelay = (Math.random() * 2) + "s";
+        props.appendChild(st);
+      }
+    }
+    if (r !== "bed" && sleeping) wakeUp("Good morning! ☀️");
+    inBathScrub = (r === "bath");
+    beep(440, .06, "sine");
+  }
+  TABS.forEach(function (t) { t.addEventListener("click", function () { setRoom(t.dataset.room); }); });
+
+  /* ---------------- petting ---------------- */
+  function pet() {
+    if (sleeping) { say("Shhh... Tom is sleeping 😴"); return; }
+    state.happy = clamp(state.happy + 4);
+    bounceTom(); beep(700 + Math.random() * 300, .08, "triangle");
+    floatFx(["💕", "❤️", "💖", "😹"][Math.floor(Math.random() * 4)]);
+    var lines = ["Hehehe! 😹", "That tickles!", "Purrrr~ 😻", "More! More!", "You're my best friend!"];
+    if (Math.random() < 0.4) say(lines[Math.floor(Math.random() * lines.length)], 1400);
+    refreshBars();
+  }
+  $("btnPet").addEventListener("click", pet);
+  $("btnJoke").addEventListener("click", function () {
+    if (sleeping) return;
+    var jokes = [
+      "Why did the cat sit on the computer? To keep an eye on the mouse! 🐭",
+      "What do you call a pile of cats? A meow-tain! ⛰️",
+      "I'm not fat, I'm FLUFFY! 😹",
+      "Knock knock! ...Who's there? ...Tom! TALKING Tom!"
+    ];
+    say(jokes[Math.floor(Math.random() * jokes.length)], 3200);
+    state.happy = clamp(state.happy + 6);
+    bounceTom(); chime(); refreshBars();
+  });
+
+  /* ---------------- Tom tap / bath scrub ---------------- */
+  var soapColor = "#FF7BAC";
+  document.querySelectorAll(".soap").forEach(function (s) {
+    s.addEventListener("click", function () {
+      document.querySelectorAll(".soap").forEach(function (x) { x.classList.remove("sel"); });
+      s.classList.add("sel");
+      soapColor = s.dataset.c;
+      say(soapColor === "rainbow" ? "Ooooh RAINBOW soap! 🌈" : "Nice color soap! 🧼", 1500);
+      beep(600, .08, "sine");
+    });
+  });
+  document.querySelector(".soap").classList.add("sel");
+
+  var scrubThrottle = 0;
+  function scrub(x, y) {
+    var now = Date.now();
+    if (now - scrubThrottle < 120) return;
+    scrubThrottle = now;
+    var c = soapColor === "rainbow"
+      ? "hsl(" + Math.floor(Math.random() * 360) + ",90%,70%)"
+      : soapColor;
+    var b = document.createElement("div");
+    b.className = "bubblefx";
+    var sz = 14 + Math.random() * 22;
+    b.style.width = b.style.height = sz + "px";
+    b.style.background = "radial-gradient(circle at 35% 30%, rgba(255,255,255,.95), " + c + ")";
+    var rect = $("stage").getBoundingClientRect();
+    b.style.left = (x - rect.left - sz / 2) + "px";
+    b.style.top = (y - rect.top - sz / 2) + "px";
+    $("stage").appendChild(b);
+    setTimeout(function () { b.remove(); }, 1600);
+    beep(900 + Math.random() * 500, .04, "sine");
+    var wasDirty = state.clean < 100;
+    state.clean = clamp(state.clean + 1.5);
+    state.happy = clamp(state.happy + 0.3);
+    if (wasDirty && state.clean >= 100) { say("Squeaky clean! ✨🧼"); chime(); floatFx("✨"); }
+    refreshBars();
+  }
+  $("tomWrap").addEventListener("pointerdown", function (ev) {
+    if (room === "bath" && inBathScrub) scrub(ev.clientX, ev.clientY);
+    else pet();
+  });
+  $("tomWrap").addEventListener("pointermove", function (ev) {
+    if (room === "bath" && inBathScrub && ev.buttons) scrub(ev.clientX, ev.clientY);
+  });
+
+  /* ---------------- feeding ---------------- */
+  document.querySelectorAll(".foodbtn").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      if (sleeping) { say("Tom is asleep! 😴"); return; }
+      if (state.food > 95) { say("Burp! I'm SO full! 🤢", 1800); setFace("open", "o"); return; }
+      var f = document.createElement("div");
+      f.className = "float"; f.textContent = btn.dataset.food;
+      f.style.left = "48%"; f.style.bottom = "30%";
+      f.style.animation = "none"; f.style.fontSize = "44px";
+      $("stage").appendChild(f);
+      setFace("open", "o");
+      setTimeout(function () {
+        f.remove(); bounceTom();
+        setFace("happy", "big");
+        beep(300, .1); setTimeout(function(){ beep(260, .1); }, 130); setTimeout(function(){ beep(230, .12); }, 260);
+        state.food = clamp(state.food + 16);
+        state.bladder = clamp(state.bladder + 10);
+        state.happy = clamp(state.happy + 3);
+        state.clean = clamp(state.clean - 2);
+        floatFx("😋");
+        if (Math.random() < 0.5) say(["Yummy!", "Nom nom nom!", "Delicious! 😋", "More please!"][Math.floor(Math.random() * 4)], 1300);
+        refreshBars(); save();
+      }, 650);
+    });
+  });
+
+  /* ---------------- potty ---------------- */
+  function accident() {
+    pottyBusy = true;
+    state.bladder = 0;
+    state.clean = clamp(state.clean - 40);
+    state.happy = clamp(state.happy - 20);
+    $("poop").style.display = "block";
+    say("Uh oh... Tom had an ACCIDENT! 💩 Clean it up and give him a bath!", 3500);
+    setFace("open", "sad");
+    setTimeout(function () { pottyBusy = false; }, 1500);
+    refreshBars(); save();
+  }
+  $("poop").addEventListener("click", function () {
+    $("poop").style.display = "none";
+    floatFx("🧹", 24, 14);
+    state.clean = clamp(state.clean + 10);
+    state.happy = clamp(state.happy + 5);
+    chime(); say("All clean! Thanks! 🧹", 1500);
+    refreshBars();
+  });
+  $("btnPotty").addEventListener("click", function () {
+    if (pottyBusy) return;
+    if (state.bladder < 30) { say("I don't need to go right now! 🚽", 1600); return; }
+    pottyBusy = true;
+    var big = state.bladder > 70;
+    say(big ? "Peeeee AND poop! 💦💩" : "Tinkle time! 💦", 2000);
+    setFace("closed", "o");
+    floatFx("🚽", 20, 45);
+    beep(200, .3, "sawtooth");
+    setTimeout(function () {
+      state.bladder = 0;
+      state.happy = clamp(state.happy + 10);
+      floatFx("💦", 25, 40);
+      if (big) floatFx("💩", 22, 35);
+      // flush!
+      beep(150, .5, "sawtooth"); setTimeout(function(){ beep(120, .4, "sawtooth"); }, 300);
+      say("Ahhhh... much better! FLUSH! 🌀", 2200);
+      setFace("happy", "big");
+      pottyBusy = false;
+      refreshBars(); save();
+    }, 1800);
+  });
+
+  /* ---------------- sleep ---------------- */
+  function wakeUp(msg) {
+    sleeping = false;
+    $("nightShade").classList.remove("on");
+    $("tomWrap").classList.remove("sleeping");
+    $("btnLight").textContent = "Turn light off 💡";
+    if (msg) say(msg, 2000);
+    chime(); refreshFace();
+  }
+  $("btnLight").addEventListener("click", function () {
+    if (!sleeping) {
+      sleeping = true;
+      $("nightShade").classList.add("on");
+      $("tomWrap").classList.add("sleeping");
+      $("btnLight").textContent = "Turn light on ☀️";
+      say("Goodnight... 😴", 1800);
+      setFace("closed", "smile");
+      beep(392, .2, "sine"); setTimeout(function(){ beep(330, .3, "sine"); }, 220);
+    } else {
+      wakeUp("Yawn... good morning! 🥱");
+    }
+  });
+  setInterval(function () { if (sleeping) floatFx("💤", 58, 62); }, 1500);
+
+  /* ================= AIRPLANE MINI-GAME ================= */
+  var pg = {
+    on: false, running: false, raf: 0,
+    y: 0, vy: 0, coins: [], clouds: [], score: 0, t: 0, speed: 3
+  };
+  var canvas = $("planeCanvas"), ctx = canvas.getContext("2d");
+  function sizeCanvas() {
+    var r = $("planeGame").getBoundingClientRect();
+    canvas.width = r.width * devicePixelRatio;
+    canvas.height = r.height * devicePixelRatio;
+    ctx.setTransform(devicePixelRatio, 0, 0, devicePixelRatio, 0, 0);
+  }
+  window.addEventListener("resize", function () { if (pg.on) sizeCanvas(); });
+
+  $("btnFly").addEventListener("click", function () {
+    if (sleeping) { say("Wake Tom up first! 😴"); return; }
+    if (state.energy < 25) { say("Tom is too tired to fly! Let him sleep first. 🥱", 2500); return; }
+    pg.on = true;
+    $("planeGame").classList.add("on");
+    $("planeMsg").classList.remove("hidden");
+    $("planeMsgText").innerHTML = "Tap to make Tom's plane fly UP!<br>Grab coins 🪙 and dodge storm clouds ⛈️<br>Coins become prize tickets! 🎟️";
+    $("planeStartBtn").textContent = "Take off! ✈️";
+    sizeCanvas();
+  });
+  $("planeExitBtn").addEventListener("click", function () {
+    pg.on = false; pg.running = false;
+    cancelAnimationFrame(pg.raf);
+    $("planeGame").classList.remove("on");
+  });
+  $("planeStartBtn").addEventListener("click", startFlight);
+
+  function startFlight() {
+    var h = canvas.height / devicePixelRatio;
+    pg.running = true; pg.score = 0; pg.t = 0; pg.speed = 3;
+    pg.y = h / 2; pg.vy = -3; pg.coins = []; pg.clouds = [];
+    $("planeMsg").classList.add("hidden");
+    $("planeScore").textContent = "0";
+    beep(500, .15); setTimeout(function(){ beep(700, .2); }, 150);
+    cancelAnimationFrame(pg.raf);
+    pg.raf = requestAnimationFrame(flightLoop);
+  }
+  function flap() { if (pg.running) { pg.vy = -6.5; beep(620, .05, "sine"); } }
+  $("planeGame").addEventListener("pointerdown", function (ev) {
+    if (ev.target.tagName !== "BUTTON") flap();
+  });
+  window.addEventListener("keydown", function (ev) {
+    if (pg.on && (ev.code === "Space" || ev.code === "ArrowUp")) { ev.preventDefault(); flap(); }
+  });
+
+  function flightLoop() {
+    if (!pg.running) return;
+    var w = canvas.width / devicePixelRatio, h = canvas.height / devicePixelRatio;
+    pg.t++;
+    pg.speed = 3 + pg.t / 900;
+    pg.vy += 0.22;
+    pg.y += pg.vy;
+    var px = w * 0.22, pr = 26;
+
+    if (pg.t % 55 === 0) pg.coins.push({ x: w + 30, y: 60 + Math.random() * (h - 160) });
+    if (pg.t > 150 && pg.t % 130 === 0) pg.clouds.push({ x: w + 60, y: 60 + Math.random() * (h - 160) });
+
+    pg.coins.forEach(function (c) { c.x -= pg.speed; });
+    pg.clouds.forEach(function (c) { c.x -= pg.speed * 1.1; });
+    pg.coins = pg.coins.filter(function (c) { return c.x > -50; });
+    pg.clouds = pg.clouds.filter(function (c) { return c.x > -80; });
+
+    // collisions
+    for (var i = pg.coins.length - 1; i >= 0; i--) {
+      var c = pg.coins[i];
+      if (Math.hypot(c.x - px, c.y - pg.y) < pr + 18) {
+        pg.coins.splice(i, 1); pg.score++;
+        $("planeScore").textContent = pg.score;
+        beep(1000, .07, "triangle");
+      }
+    }
+    var crashed = pg.y < 10 || pg.y > h - 10;
+    pg.clouds.forEach(function (c) {
+      if (Math.hypot(c.x - px, c.y - pg.y) < pr + 26) crashed = true;
+    });
+
+    // draw
+    ctx.clearRect(0, 0, w, h);
+    var grad = ctx.createLinearGradient(0, 0, 0, h);
+    grad.addColorStop(0, "#8ED6F5"); grad.addColorStop(1, "#D8F0FB");
+    ctx.fillStyle = grad; ctx.fillRect(0, 0, w, h);
+    ctx.font = "34px serif"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    // background clouds
+    ctx.globalAlpha = 0.5;
+    for (var b = 0; b < 4; b++) {
+      ctx.fillText("☁️", ((b * 210 - pg.t * 0.6) % (w + 120) + w + 120) % (w + 120) - 60, 50 + b * 70);
+    }
+    ctx.globalAlpha = 1;
+    pg.coins.forEach(function (c) { ctx.fillText("🪙", c.x, c.y); });
+    ctx.font = "44px serif";
+    pg.clouds.forEach(function (c) { ctx.fillText("⛈️", c.x, c.y); });
+    // plane + tom
+    ctx.save();
+    ctx.translate(px, pg.y);
+    ctx.rotate(Math.max(-0.4, Math.min(0.5, pg.vy * 0.05)));
+    ctx.font = "46px serif"; ctx.fillText("🛩️", 0, 6);
+    ctx.font = "24px serif"; ctx.fillText("🐱", -2, -16);
+    ctx.restore();
+
+    if (crashed) { endFlight(); return; }
+    pg.raf = requestAnimationFrame(flightLoop);
+  }
+  function endFlight() {
+    pg.running = false;
+    beep(180, .4, "sawtooth");
+    state.tickets += pg.score;
+    state.energy = clamp(state.energy - 12);
+    state.happy = clamp(state.happy + (pg.score > 0 ? 8 : 0));
+    save(); refreshBars();
+    $("planeMsg").classList.remove("hidden");
+    $("planeMsgText").innerHTML = "💥 Landed!<br>You grabbed <b>" + pg.score + " coins</b> = 🎟️ " + pg.score +
+      " tickets!<br>Total tickets: 🎟️ " + state.tickets;
+    $("planeStartBtn").textContent = "Fly again! ✈️";
+  }
+
+  /* ---------------- MrBeast prize shop ---------------- */
+  var PRIZES = [
+    { id: "cap",     ico: "🧢", name: "Beast Cap",            cost: 10, desc: "Tom can WEAR it!" },
+    { id: "choc",    ico: "🍫", name: "Feastables Chocolate", cost: 15, desc: "The famous chocolate bar!" },
+    { id: "burger",  ico: "🍔", name: "Beast Burger",         cost: 20, desc: "A super tasty burger!" },
+    { id: "money",   ico: "💰", name: "Pile of Money",        cost: 30, desc: "Like a MrBeast challenge prize!" },
+    { id: "island",  ico: "🏝️", name: "Private Island",       cost: 50, desc: "The ULTIMATE MrBeast prize!" },
+    { id: "trophy",  ico: "🏆", name: "Golden Play Button",   cost: 75, desc: "For the biggest fans!" }
+  ];
+  function renderShop() {
+    var list = $("prizeList"); list.innerHTML = "";
+    PRIZES.forEach(function (p) {
+      var owned = state.owned.indexOf(p.id) >= 0;
+      var row = document.createElement("div");
+      row.className = "prize";
+      var btnHtml;
+      if (owned && p.id === "cap") {
+        btnHtml = '<button class="bigbtn blue" data-wear="1">' + (state.wearCap ? "Take off" : "Wear it!") + "</button>";
+      } else if (owned) {
+        btnHtml = "<span style='font-size:24px'>✅</span>";
+      } else {
+        btnHtml = '<button class="bigbtn" data-buy="1"' + (state.tickets < p.cost ? " disabled" : "") + ">🎟️ " + p.cost + "</button>";
+      }
+      row.innerHTML = '<div class="pi">' + p.ico + '</div><div class="pn"><b>' + p.name + "</b><small>" + p.desc + "</small></div>" + btnHtml;
+      var buyBtn = row.querySelector("[data-buy]");
+      if (buyBtn) buyBtn.addEventListener("click", function () {
+        if (state.tickets < p.cost) return;
+        state.tickets -= p.cost;
+        state.owned.push(p.id);
+        state.happy = clamp(state.happy + 15);
+        chime(); floatFx("🎉");
+        save(); renderShelf(); renderShop(); refreshBars();
+      });
+      var wearBtn = row.querySelector("[data-wear]");
+      if (wearBtn) wearBtn.addEventListener("click", function () {
+        state.wearCap = !state.wearCap;
+        renderShelf(); renderShop(); save(); chime();
+      });
+      list.appendChild(row);
+    });
+  }
+  function renderShelf() {
+    var shelf = $("shelf"); shelf.innerHTML = "";
+    PRIZES.forEach(function (p) {
+      if (state.owned.indexOf(p.id) >= 0) {
+        var d = document.createElement("span");
+        d.textContent = p.ico; d.title = p.name;
+        shelf.appendChild(d);
+      }
+    });
+    $("cap").style.display = (state.owned.indexOf("cap") >= 0 && state.wearCap) ? "block" : "none";
+  }
+  $("btnShop").addEventListener("click", function () { renderShop(); $("shop").classList.add("on"); });
+  $("shopCloseBtn").addEventListener("click", function () { $("shop").classList.remove("on"); });
+
+  /* ---------------- go! ---------------- */
+  renderShelf();
+  refreshBars();
+  setRoom("living");
+  setTimeout(function () { say("Hi! I'm Tom! Tap me! 😸", 2600); }, 600);
+  window.addEventListener("beforeunload", save);
+})();
+</script>
+</body>
+</html>
